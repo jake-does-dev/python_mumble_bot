@@ -7,10 +7,11 @@ import pymumble_py3 as pymumble
 
 AUDIO_DIR = "../audio/"
 RECORDING_DIR = "/mnt/f/Users/Jake/Documents/MumbleRecordings/"
-BITRATE = 24000
+BITRATE = 44100
 HOSTNAME = "MUMBLE_SERVER_HOSTNAME"
 PASSWORD = "MUMBLE_SERVER_PASSWORD"
 ROOT_CHANNEL = "MUMBLE_SERVER_ROOT_CHANNEL"
+VALID_AUDIO_FORMATS = [".wav", ".mp3"]
 
 
 def connect():
@@ -35,6 +36,7 @@ class Client:
         self.channel = self.mumble.channels.find_by_name(os.getenv(ROOT_CHANNEL))
         self.myself = self.mumble.users.myself
         self.recording_manager = RecordingManager()
+        self.file_map = self.refresh_map()
 
         self.loop()
 
@@ -80,16 +82,21 @@ class Client:
                 )
 
     def list_files(self):
-        (_, _, filenames) = next(os.walk(AUDIO_DIR))
-        formatted = sorted([f.split(".")[0] for f in filenames])
-        self.channel.send_text_message(
-            "Here are the available audio files: {0}".format(formatted)
+        self.refresh_map()
+
+        self.channel.send_text_message(", ".join([k for k in self.mapping.keys()]))
+
+    def refresh_map(self):
+        (_, _, file_paths) = next(os.walk(AUDIO_DIR))
+        names = [f.split(".")[0] for f in file_paths]
+        self.mapping = dict(
+            zip(names, ["{0}{1}".format(AUDIO_DIR, f) for f in file_paths])
         )
-        self.channel.send_text_message("Usage: /pmb play file1 file2 ...")
 
     def play_files(self, file_names):
         for name in file_names:
-            file = "../audio/{0}.wav".format(name)
+            file = self.mapping.get(name)
+
             encode_command = ["ffmpeg", "-i", file, "-ac", "1", "-f", "s16le", "-"]
             print(encode_command)
             pcm = sp.Popen(
