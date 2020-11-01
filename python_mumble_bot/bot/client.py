@@ -1,11 +1,12 @@
 import os
 import subprocess as sp
 
-import bot.record as record
 import pymumble_py3 as pymumble
 from bot.command import CommandResolver, RefreshCommand
 from bot.event import AudioEvent, RecordEvent, TextEvent
 from bot.manager import StateManager
+from bot.message import Message
+from bot.record import RecordingManager
 
 AUDIO_DIR = "audio/"
 HOSTNAME = "MUMBLE_SERVER_HOSTNAME"
@@ -74,10 +75,9 @@ class Client:
         self.mumble.start()
         self.mumble.is_ready()
         self.myself = self.mumble.users.myself
-        self.recording_manager = record.RecordingManager(
-            list(self.mumble.users.values())
-        )
+        self.recording_manager = RecordingManager(list(self.mumble.users.values()))
 
+        self.interpret_command(Message("/pmb list"))
         self.loop()
 
     def loop(self):

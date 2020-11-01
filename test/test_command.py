@@ -27,13 +27,9 @@ from bot.constants import (
     UL_END,
 )
 from bot.event import AudioEvent, RecordEvent, TextEvent
+from bot.message import Message
 
 command_resolver = CommandResolver()
-
-
-class Message:
-    def __init__(self, message):
-        self.message = message
 
 
 def test_resolve_play():
