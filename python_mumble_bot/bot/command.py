@@ -53,7 +53,7 @@ class Command:
     def __eq__(self, other):
         return self.data == other.data
 
-    def generate_event(self, _):
+    def generate_events(self, _):
         return None
 
 
@@ -66,7 +66,7 @@ class ListCommand(RefreshCommand):
     def __init__(self):
         super().__init__()
 
-    def generate_event(self, state):
+    def generate_events(self, state):
         sorted_names = sorted([k for k in state[AUDIO_CLIPS_MAPPING].keys()])
         starting_char = [n[0] for n in sorted_names]
 
@@ -92,58 +92,63 @@ class ListCommand(RefreshCommand):
             table = tables_map[k]
             html = html + "".join(["<h4>", k, "</h4>", "<ul>", table, "</ul>"])
 
-        return TextEvent(html)
+        return [TextEvent(html)]
 
 
 class DotaCommand(Command):
     GAME_MODES = ["diretide", "turbo", "allpick"]
 
-    def generate_event(self, _):
+    def generate_events(self, _):
         chosen = random.choice(self.GAME_MODES)
-        return TextEvent(chosen)
+        return [TextEvent(chosen)]
 
 
 class RandomCommand(Command):
     def __init__(self, number):
         super().__init__(number)
 
-    def generate_event(self, state):
+    def generate_events(self, state):
         file_names = list(state[AUDIO_CLIPS_MAPPING].keys())
         chosen = []
 
         for i in range(0, int(self.data)):
             chosen.append(random.choice(file_names))
 
-        return AudioEvent(chosen)
+        command = ["To repeat this random selection:", "/pmb"]
+        for selected in chosen:
+            command.append(selected)
+
+        repeat = " ".join(command)
+        return [TextEvent(repeat), AudioEvent(chosen)]
 
 
 class RecordCommand(Command):
     def __init__(self, command):
         super().__init__(command)
 
-    def generate_event(self, _):
-        return RecordEvent(self.data)
+    def generate_events(self, _):
+        return [RecordEvent(self.data)]
 
 
 class PlayCommand(Command):
     def __init__(self, file_names):
         super().__init__(file_names)
 
-    def generate_event(self, _):
-        return AudioEvent(self.data)
+    def generate_events(self, _):
+        return [AudioEvent(self.data)]
 
 
 class InvalidCommand(Command):
     def __init__(self):
         super().__init__("Unrecognised command.")
 
-    def generate_event(self, _):
-        return TextEvent(self.data)
+    def generate_events(self, _):
+        return [TextEvent(self.data)]
 
 
 class IgnoreCommand(Command):
     def __init__(self):
         super().__init__("Ignoring command.")
 
-    def generate_event(self, _):
-        return TextEvent(self.data)
+    def generate_events(self, _):
+        return [TextEvent(self.data)]

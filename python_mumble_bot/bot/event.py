@@ -1,3 +1,8 @@
+import os
+
+from bot.constants import ROOT_CHANNEL
+
+
 class Event:
     def __init__(self, data):
         self.data = data
@@ -12,8 +17,9 @@ class AudioEvent(Event):
 
 
 class TextEvent(Event):
-    def __init__(self, data):
+    def __init__(self, data, channel_name=os.getenv(ROOT_CHANNEL)):
         super().__init__(data)
+        self.channel_name = channel_name
 
 
 class RecordEvent(Event):

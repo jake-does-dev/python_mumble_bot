@@ -1,18 +1,15 @@
 import os
-import subprocess as sp
 
 import pymumble_py3 as pymumble
+from bot.api_wrapper import MumbleWrapper
 from bot.command import CommandResolver, RefreshCommand
-from bot.event import AudioEvent, RecordEvent, TextEvent
-from bot.manager import StateManager
-from bot.message import Message
-from bot.record import RecordingManager
-
-AUDIO_DIR = "audio/"
-HOSTNAME = "MUMBLE_SERVER_HOSTNAME"
-PASSWORD = "MUMBLE_SERVER_PASSWORD"
-ROOT_CHANNEL = "MUMBLE_SERVER_ROOT_CHANNEL"
-VALID_AUDIO_FORMATS = [".wav", ".mp3"]
+from bot.constants import HOSTNAME, PASSWORD
+from bot.manager import (
+    PlaybackManager,
+    RecordingManager,
+    StateManager,
+    TextMessageManager,
+)
 
 
 def connect():
@@ -28,12 +25,44 @@ def connect():
 
 
 class Client:
+    STATE_MANAGER = "STATE_MANAGER"
+    PLAYBACK_MANAGER = "PLAYBACK_MANAGER"
+    RECORDING_MANAGER = "RECORDING_MANAGER"
+    TEXT_MESSAGE_MANAGER = "TEXT_MESSAGE_MANAGER"
+
     def __init__(
-        self, mumble, state_manager=StateManager(), command_resolver=CommandResolver()
+        self,
+        mumble,
+        state_manager=None,
+        playback_manager=None,
+        recording_manager=None,
+        text_message_manager=None,
     ):
         self.mumble = mumble
-        self.state_manager = state_manager
-        self.command_resolver = command_resolver
+        self.command_resolver = CommandResolver()
+        self.managers = dict()
+
+        state_manager = StateManager() if state_manager is None else state_manager
+        playback_manager = (
+            PlaybackManager(self.mumble, state_manager)
+            if playback_manager is None
+            else playback_manager
+        )
+        recording_manager = (
+            RecordingManager(MumbleWrapper(self.mumble))
+            if recording_manager is None
+            else recording_manager
+        )
+        text_message_manager = (
+            TextMessageManager(MumbleWrapper(self.mumble))
+            if text_message_manager is None
+            else text_message_manager
+        )
+
+        self.managers[self.STATE_MANAGER] = state_manager
+        self.managers[self.PLAYBACK_MANAGER] = playback_manager
+        self.managers[self.RECORDING_MANAGER] = recording_manager
+        self.managers[self.TEXT_MESSAGE_MANAGER] = text_message_manager
 
     # noinspection PyUnresolvedReferences
     def set_callbacks(self):
@@ -45,59 +74,23 @@ class Client:
         command = self.command_resolver.resolve(incoming)
 
         if isinstance(command, RefreshCommand):
-            self.state_manager.refresh_state()
+            self.managers[self.STATE_MANAGER].refresh_state()
 
-        event = command.generate_event(self.state_manager.state)
-
-        if isinstance(event, TextEvent):
-            self.send_text(event)
-        elif isinstance(event, AudioEvent):
-            self.send_audio(event)
-        elif isinstance(event, RecordEvent):
-            self.record(event)
-
-    def send_text(self, event):
-        channel = self.mumble.channels.find_by_name(os.getenv(ROOT_CHANNEL))
-        channel.send_text_message(event.data)
-
-    def send_audio(self, event):
-        file_mapping = self.state_manager.get_audio_clips()
-        for name in event.data:
-            file = file_mapping[name]
-            encode_command = ["ffmpeg", "-i", file, "-ac", "1", "-f", "s16le", "-"]
-            print(encode_command)
-            pcm = sp.Popen(
-                encode_command, stdout=sp.PIPE, stderr=sp.DEVNULL
-            ).stdout.read()
-            self.mumble.sound_output.add_sound(pcm)
+        events = command.generate_events(self.managers[self.STATE_MANAGER].state)
+        for event in events:
+            for manager in self.managers.values():
+                manager.process(event)
 
     def start(self):
         self.mumble.start()
         self.mumble.is_ready()
-        self.myself = self.mumble.users.myself
-        self.recording_manager = RecordingManager(list(self.mumble.users.values()))
-
-        self.interpret_command(Message("/pmb list"))
+        self.managers[self.STATE_MANAGER].refresh_state()
         self.loop()
 
     def loop(self):
         while self.mumble.is_alive():
-            if self.recording_manager.is_recording:
-                for user in self.mumble.users.values():
-                    if user.sound.is_sound():
-                        user_name = user["name"]
-                        sound = user.sound.get_sound()
-                        self.recording_manager.write(user_name, sound.pcm)
-
-    def record(self, event):
-        if event.data == "start":
-            self.recording_manager.start_recording()
-            self.mumble.set_receive_sound(True)
-            self.myself.recording()
-        else:
-            self.myself.unrecording()
-            self.mumble.set_receive_sound(False)
-            self.recording_manager.stop_recording()
+            for manager in self.managers.values():
+                manager.loop()
 
 
 if __name__ == "__main__":
