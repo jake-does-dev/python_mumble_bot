@@ -1,14 +1,11 @@
 import os
 import random
 import subprocess as sp
-import wave
-from datetime import datetime
 
 import pymumble_py3 as pymumble
+import record
 
-AUDIO_DIR = "../audio/"
-RECORDING_DIR = "/mnt/f/Users/Jake/Documents/MumbleRecordings/"
-BITRATE = 48000
+AUDIO_DIR = "audio/"
 HOSTNAME = "MUMBLE_SERVER_HOSTNAME"
 PASSWORD = "MUMBLE_SERVER_PASSWORD"
 ROOT_CHANNEL = "MUMBLE_SERVER_ROOT_CHANNEL"
@@ -36,7 +33,9 @@ class Client:
         self.mumble.is_ready()
         self.channel = self.mumble.channels.find_by_name(os.getenv(ROOT_CHANNEL))
         self.myself = self.mumble.users.myself
-        self.recording_manager = RecordingManager(list(self.mumble.users.values()))
+        self.recording_manager = record.RecordingManager(
+            list(self.mumble.users.values())
+        )
         self.file_map = self.refresh_map()
 
         self.loop()
@@ -94,9 +93,33 @@ class Client:
     def list_files(self):
         self.refresh_map()
 
-        self.channel.send_text_message(
-            ", ".join(sorted([k for k in self.mapping.keys()]))
-        )
+        sorted_names = sorted([k for k in self.mapping.keys()])
+        starting_char = [n[0] for n in sorted_names]
+
+        elems_map = dict()
+        for i in range(0, len(starting_char)):
+            names = elems_map.get(starting_char[i], [])
+            names.append(sorted_names[i])
+            elems_map[starting_char[i]] = names
+
+        tables_map = dict()
+        for k in elems_map:
+            table = "<table><tr>"
+            elems = elems_map.get(k)
+            for i, elem in enumerate(elems):
+                if (i + 1) % 5 == 0:
+                    table = table + "</tr><tr>"
+                table = table + "".join(["<td>", elem, "</td>"])
+            table = table + "</tr></table>"
+            tables_map[k] = table
+
+        html = ""
+        for k in tables_map:
+            table = tables_map[k]
+            html = html + "".join(["<h4>", k, "</h4>", "<ul>", table, "</ul>"])
+
+        print(html)
+        self.channel.send_text_message(html)
 
     def refresh_map(self):
         (_, _, file_paths) = next(os.walk(AUDIO_DIR))
@@ -106,15 +129,29 @@ class Client:
         )
 
     def play_files(self, file_names):
-        for name in file_names:
-            file = self.mapping.get(name)
+        if len(file_names) == 2 and file_names[0] == "random":
+            number = int(file_names[1])
+            values = list(self.mapping.values())
 
-            encode_command = ["ffmpeg", "-i", file, "-ac", "1", "-f", "s16le", "-"]
-            print(encode_command)
-            pcm = sp.Popen(
-                encode_command, stdout=sp.PIPE, stderr=sp.DEVNULL
-            ).stdout.read()
-            self.mumble.sound_output.add_sound(pcm)
+            if number > 0 and number < 11:
+                for _ in range(0, number):
+                    file = random.choice(values)
+                    self.send_audio(file)
+            else:
+                self.channel.send_text_message(
+                    "I will only play between 1 and 10 clips."
+                )
+
+        else:
+            for name in file_names:
+                file = self.mapping.get(name)
+                self.send_audio(file)
+
+    def send_audio(self, file):
+        encode_command = ["ffmpeg", "-i", file, "-ac", "1", "-f", "s16le", "-"]
+        print(encode_command)
+        pcm = sp.Popen(encode_command, stdout=sp.PIPE, stderr=sp.DEVNULL).stdout.read()
+        self.mumble.sound_output.add_sound(pcm)
 
     def record(self, state):
         if state == "start":
@@ -127,34 +164,5 @@ class Client:
             self.recording_manager.stop_recording()
 
 
-class RecordingManager:
-    def __init__(self, users):
-        self.is_recording = False
-        self.users = users
-        self.files = dict()
-
-    def start_recording(self):
-        now = datetime.now()
-        format = "%Y%m%d%H%M%S"
-
-        for user in self.users:
-            user_name = user["name"]
-            file_name = "{0}{1}-mumble-{2}.wav".format(
-                RECORDING_DIR, user_name, now.strftime(format)
-            )
-
-            file = wave.open(file_name, "wb")
-            file.setparams((1, 2, BITRATE, 0, "NONE", "not compressed"))
-            self.files[user_name] = file
-
-        self.is_recording = True
-
-    def stop_recording(self):
-        for file in self.files.values():
-            file.close()
-
-        self.is_recording = False
-        self.files = dict()
-
-    def write(self, name, data):
-        self.files[name].writeframes(data)
+if __name__ == "__main__":
+    connect()
