@@ -1,7 +1,9 @@
 import os
 import sys
 
-sys.path.append(os.path.realpath("/home/winneh/dev/python_mumble_bot/src"))
+sys.path.append(
+    os.path.realpath("/home/winneh/dev/python_mumble_bot/python_mumble_bot")
+)
 
 import bot.record as record
 

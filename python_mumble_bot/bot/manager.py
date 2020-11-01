@@ -3,7 +3,8 @@ import random
 import subprocess as sp
 
 import pymumble_py3 as pymumble
-import record
+
+import python_mumble_bot.bot.record as record
 
 AUDIO_DIR = "audio/"
 HOSTNAME = "MUMBLE_SERVER_HOSTNAME"
