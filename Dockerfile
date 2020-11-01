@@ -13,6 +13,9 @@ FROM base AS python-deps
 RUN pip install pipenv
 RUN apt-get update && apt-get install -y --no-install-recommends gcc
 
+# Install libopus
+RUN apt-get apt-get install libopus0
+
 # Install python dependencies in /.venv
 COPY Pipfile .
 COPY Pipfile.lock .
