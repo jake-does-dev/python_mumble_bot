@@ -1,3 +1,3 @@
-import python_mumble_bot.bot.manager as manager
+import python_mumble_bot.bot.client as client
 
-manager.connect()
+client.connect()
