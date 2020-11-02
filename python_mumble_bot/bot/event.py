@@ -16,12 +16,29 @@ class AudioEvent(Event):
         super().__init__(data)
 
 
+class RecordEvent(Event):
+    def __init__(self, data):
+        super().__init__(data)
+
+
 class TextEvent(Event):
+    def __init__(self, data):
+        super().__init__(data)
+
+
+class ChannelTextEvent(TextEvent):
     def __init__(self, data, channel_name=os.getenv(ROOT_CHANNEL)):
         super().__init__(data)
         self.channel_name = channel_name
 
+    def __eq__(self, other):
+        return self.data == other.data and self.channel_name == other.channel_name
 
-class RecordEvent(Event):
-    def __init__(self, data):
+
+class UserTextEvent(TextEvent):
+    def __init__(self, data, user):
         super().__init__(data)
+        self.user = user
+
+    def __eq__(self, other):
+        return self.data == other.data and self.user == other.user

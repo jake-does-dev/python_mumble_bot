@@ -37,19 +37,26 @@ class MockChannelWrapper(ChannelWrapper):
 
 
 class MockUserWrapper(UserWrapper):
-    def __init__(self, name, data):
+    def __init__(self, name):
         self.name = name
-        self.data = data
-        self.sound = True
+        self.sound_data = None
+        self.text_data = None
+        self.is_sound_from_user = True
 
     def get_name(self):
         return self.name
 
     def is_sound(self):
-        return self.sound
+        return self.is_sound_from_user
 
     def get_sound(self):
-        return self.data
+        return self.sound_data
+
+    def set_sound(self, sound_data):
+        self.sound_data = sound_data
+
+    def send_text_message(self, text_data):
+        self.text_data = text_data
 
 
 class MockSound:

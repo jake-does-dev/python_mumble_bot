@@ -5,7 +5,13 @@ import wave
 from pathlib import Path
 
 from bot.constants import AUDIO_CLIPS_MAPPING, BITRATE, DEFAULT_RECORDING_DIR
-from bot.event import AudioEvent, RecordEvent, TextEvent
+from bot.event import (
+    AudioEvent,
+    ChannelTextEvent,
+    RecordEvent,
+    TextEvent,
+    UserTextEvent,
+)
 
 
 class EventManager:
@@ -52,9 +58,15 @@ class TextMessageManager(EventManager):
         return isinstance(event, TextEvent)
 
     def dispatch(self, event):
-        if self.channel_wrapper is None:
-            self.channel_wrapper = self.mumble_wrapper.get_channel(event.channel_name)
-        self.channel_wrapper.send(event.data)
+        if isinstance(event, ChannelTextEvent):
+            if self.channel_wrapper is None:
+                self.channel_wrapper = self.mumble_wrapper.get_channel(
+                    event.channel_name
+                )
+            self.channel_wrapper.send(event.data)
+
+        elif isinstance(event, UserTextEvent):
+            event.user.send_text_message(event.data)
 
 
 class RecordingManager(EventManager):
