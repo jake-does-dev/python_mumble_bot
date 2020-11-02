@@ -27,7 +27,7 @@ from bot.constants import (
     UL,
     UL_END,
 )
-from bot.event import AudioEvent, RecordEvent, TextEvent
+from bot.event import AudioEvent, ChannelTextEvent, RecordEvent, UserTextEvent
 from bot.message import Message
 
 command_resolver = CommandResolver()
@@ -92,7 +92,7 @@ def test_event_from_list_command():
     state[AUDIO_CLIPS_MAPPING] = {"awesome": "a.wav", "bingo": "b.wav"}
 
     command = ListCommand()
-    event = command.generate_events(state)
+    event = command.generate_events(state, None)
 
     expected_html = "".join(
         [
@@ -122,36 +122,36 @@ def test_event_from_list_command():
             UL_END,
         ]
     )
-    expected_event = [TextEvent(expected_html)]
+    expected_event = [UserTextEvent(expected_html, None)]
 
     assert event == expected_event
 
 
 def test_event_from_dota_command():
     command = DotaCommand()
-    events = command.generate_events(None)
+    events = command.generate_events(None, None)
 
-    assert isinstance(events[0], TextEvent)
+    assert isinstance(events[0], ChannelTextEvent)
     assert events[0].data in ["turbo", "diretide", "allpick"]
 
 
 def test_event_from_invalid_command():
     command = InvalidCommand()
-    events = command.generate_events(None)
+    events = command.generate_events(None, None)
 
-    assert events == [TextEvent("Unrecognised command.")]
+    assert events == [UserTextEvent("Unrecognised command.", None)]
 
 
 def test_event_from_ignore_command():
     command = IgnoreCommand()
-    events = command.generate_events(None)
+    events = command.generate_events(None, None)
 
-    assert events == [TextEvent("Ignoring command.")]
+    assert events == [UserTextEvent("Ignoring command.", None)]
 
 
 def test_event_from_play_command():
     command = PlayCommand(["first", "second"])
-    events = command.generate_events(None)
+    events = command.generate_events(None, None)
 
     assert events == [AudioEvent(["first", "second"])]
 
@@ -166,22 +166,22 @@ def test_event_from_random_command():
     }
 
     command = RandomCommand("3")
-    events = command.generate_events(state)
+    events = command.generate_events(state, None)
 
-    assert isinstance(events[0], TextEvent)
+    assert isinstance(events[0], UserTextEvent)
     assert isinstance(events[1], AudioEvent)
     assert set(events[1].data).issubset(state[AUDIO_CLIPS_MAPPING].keys())
 
 
 def test_event_from_record_command():
     command = RecordCommand("start")
-    events = command.generate_events(None)
+    events = command.generate_events(None, None)
 
     assert events == [RecordEvent("start")]
 
 
 def test_unimplemented_command():
     command = Command()
-    events = command.generate_events(None)
+    events = command.generate_events(None, None)
 
     assert events is None

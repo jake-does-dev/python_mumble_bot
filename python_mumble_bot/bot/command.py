@@ -1,7 +1,8 @@
+import os
 import random
 
-from bot.constants import AUDIO_CLIPS_MAPPING
-from bot.event import AudioEvent, RecordEvent, TextEvent
+from bot.constants import AUDIO_CLIPS_MAPPING, ROOT_CHANNEL
+from bot.event import AudioEvent, ChannelTextEvent, RecordEvent, UserTextEvent
 
 
 class CommandResolver:
@@ -17,29 +18,14 @@ class CommandResolver:
             action = parts[1]
             if action == "list":
                 commands = ListCommand()
-                # self.list_files()
             elif action == "play":
                 commands = PlayCommand(parts[2:])
-                # self.play_files(parts[2:])
             elif action == "random":
                 commands = RandomCommand(parts[2])
             elif action == "record":
                 commands = RecordCommand(parts[2])
-                # if len(parts) != 3:
-                #     self.channel.send_text_message(
-                #         "The 'record' command needs to be followed by 'start' or 'stop'. Check and try again."
-                #     )
-                # else:
-                #     self.record(parts[2])
             elif action == "dota":
                 commands = DotaCommand()
-                # chosen = random.randint(0, 3)
-                # if chosen == 1:
-                #     self.channel.send_text_message("turbo")
-                # elif chosen == 2:
-                #     self.channel.send_text_message("all pick")
-                # elif chosen == 3:
-                #     self.channel.send_text_message("diretide")
             else:
                 commands = InvalidCommand()
 
@@ -53,7 +39,7 @@ class Command:
     def __eq__(self, other):
         return self.data == other.data
 
-    def generate_events(self, _):
+    def generate_events(self, state, user):
         return None
 
 
@@ -66,7 +52,7 @@ class ListCommand(RefreshCommand):
     def __init__(self):
         super().__init__()
 
-    def generate_events(self, state):
+    def generate_events(self, state, user):
         sorted_names = sorted([k for k in state[AUDIO_CLIPS_MAPPING].keys()])
         starting_char = [n[0] for n in sorted_names]
 
@@ -92,22 +78,22 @@ class ListCommand(RefreshCommand):
             table = tables_map[k]
             html = html + "".join(["<h4>", k, "</h4>", "<ul>", table, "</ul>"])
 
-        return [TextEvent(html)]
+        return [UserTextEvent(html, user)]
 
 
 class DotaCommand(Command):
     GAME_MODES = ["diretide", "turbo", "allpick"]
 
-    def generate_events(self, _):
+    def generate_events(self, state, user):
         chosen = random.choice(self.GAME_MODES)
-        return [TextEvent(chosen)]
+        return [ChannelTextEvent(chosen, channel_name=os.getenv(ROOT_CHANNEL))]
 
 
 class RandomCommand(Command):
     def __init__(self, number):
         super().__init__(number)
 
-    def generate_events(self, state):
+    def generate_events(self, state, user):
         file_names = list(state[AUDIO_CLIPS_MAPPING].keys())
         chosen = []
 
@@ -119,14 +105,14 @@ class RandomCommand(Command):
             command.append(selected)
 
         repeat = " ".join(command)
-        return [TextEvent(repeat), AudioEvent(chosen)]
+        return [UserTextEvent(repeat, user), AudioEvent(chosen)]
 
 
 class RecordCommand(Command):
     def __init__(self, command):
         super().__init__(command)
 
-    def generate_events(self, _):
+    def generate_events(self, state, user):
         return [RecordEvent(self.data)]
 
 
@@ -134,7 +120,7 @@ class PlayCommand(Command):
     def __init__(self, file_names):
         super().__init__(file_names)
 
-    def generate_events(self, _):
+    def generate_events(self, state, user):
         return [AudioEvent(self.data)]
 
 
@@ -142,13 +128,13 @@ class InvalidCommand(Command):
     def __init__(self):
         super().__init__("Unrecognised command.")
 
-    def generate_events(self, _):
-        return [TextEvent(self.data)]
+    def generate_events(self, state, user):
+        return [UserTextEvent(self.data, user)]
 
 
 class IgnoreCommand(Command):
     def __init__(self):
         super().__init__("Ignoring command.")
 
-    def generate_events(self, _):
-        return [TextEvent(self.data)]
+    def generate_events(self, state, user):
+        return [UserTextEvent(self.data, user)]

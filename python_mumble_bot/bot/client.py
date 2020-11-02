@@ -76,7 +76,10 @@ class Client:
         if isinstance(command, RefreshCommand):
             self.managers[self.STATE_MANAGER].refresh_state()
 
-        events = command.generate_events(self.managers[self.STATE_MANAGER].state)
+        events = command.generate_events(
+            self.managers[self.STATE_MANAGER].state,
+            self.mumble.users.get(incoming.actor),
+        )
         for event in events:
             for manager in self.managers.values():
                 manager.process(event)
