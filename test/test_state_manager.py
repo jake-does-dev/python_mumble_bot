@@ -8,9 +8,9 @@ from bot.manager import StateManager
 
 def test_refresh_audio_files_mapping(tmp_path):
     audio_dir = tmp_path / "audio/"
-    f1 = audio_dir / "sound.wav"
+    f1 = audio_dir / "music.wav"
     f2 = audio_dir / "other.mp3"
-    f3 = audio_dir / "music.wav"
+    f3 = audio_dir / "sound.wav"
 
     audio_dir.mkdir()
     f1.touch()
@@ -19,8 +19,12 @@ def test_refresh_audio_files_mapping(tmp_path):
 
     manager = StateManager(audio_clips_dir=audio_dir)
     manager.refresh_state()
-    audio_clips = manager.get_audio_clips()
 
-    assert audio_clips["sound"] == f1
-    assert audio_clips["other"] == f2
-    assert audio_clips["music"] == f3
+    assert manager.find_audio_clip_by_id("0") == f1
+    assert manager.find_audio_clip_by_name("music") == f1
+
+    assert manager.find_audio_clip_by_id("1") == f2
+    assert manager.find_audio_clip_by_name("other") == f2
+
+    assert manager.find_audio_clip_by_id("2") == f3
+    assert manager.find_audio_clip_by_name("sound") == f3

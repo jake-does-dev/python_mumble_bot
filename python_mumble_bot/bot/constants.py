@@ -1,4 +1,5 @@
-AUDIO_CLIPS_MAPPING = "audio_clips_mapping"
+AUDIO_CLIPS_BY_NAME = "AUDIO_CLIPS_BY_NAME"
+AUDIO_CLIPS_BY_ID = "AUDIO_CLIPS_BY_ID"
 TABLE = "<table>"
 TABLE_END = "</table>"
 TR = "<tr>"

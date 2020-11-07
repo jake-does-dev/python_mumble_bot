@@ -12,8 +12,9 @@ class Event:
 
 
 class AudioEvent(Event):
-    def __init__(self, data):
+    def __init__(self, data, playback_speeds):
         super().__init__(data)
+        self.playback_speed = playback_speeds
 
 
 class RecordEvent(Event):
