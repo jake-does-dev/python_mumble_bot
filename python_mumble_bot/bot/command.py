@@ -2,8 +2,17 @@ import argparse
 import os
 import random
 
-from bot.constants import AUDIO_CLIPS_BY_ID, AUDIO_CLIPS_BY_NAME, ROOT_CHANNEL
-from bot.event import AudioEvent, ChannelTextEvent, RecordEvent, UserTextEvent
+from python_mumble_bot.bot.constants import (
+    AUDIO_CLIPS_BY_ID,
+    AUDIO_CLIPS_BY_NAME,
+    ROOT_CHANNEL,
+)
+from python_mumble_bot.bot.event import (
+    AudioEvent,
+    ChannelTextEvent,
+    RecordEvent,
+    UserTextEvent,
+)
 
 
 class CommandResolver:

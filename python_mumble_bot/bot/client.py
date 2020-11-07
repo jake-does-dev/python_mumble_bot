@@ -1,10 +1,11 @@
 import os
 
 import pymumble_py3 as pymumble
-from bot.api_wrapper import MumbleWrapper
-from bot.command import CommandResolver, RefreshCommand
-from bot.constants import HOSTNAME, PASSWORD
-from bot.manager import (
+
+from python_mumble_bot.bot.api_wrapper import MumbleWrapper
+from python_mumble_bot.bot.command import CommandResolver, RefreshCommand
+from python_mumble_bot.bot.constants import HOSTNAME, PASSWORD
+from python_mumble_bot.bot.manager import (
     PlaybackManager,
     RecordingManager,
     StateManager,

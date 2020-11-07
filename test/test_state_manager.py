@@ -3,7 +3,7 @@ import sys
 
 sys.path.append(os.path.relpath("./python_mumble_bot"))
 
-from bot.manager import StateManager
+from python_mumble_bot.bot.manager import StateManager
 
 
 def test_refresh_audio_files_mapping(tmp_path):

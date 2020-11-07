@@ -5,13 +5,13 @@ import subprocess as sp
 import wave
 from pathlib import Path
 
-from bot.constants import (
+from python_mumble_bot.bot.constants import (
     AUDIO_CLIPS_BY_ID,
     AUDIO_CLIPS_BY_NAME,
     BITRATE,
     DEFAULT_RECORDING_DIR,
 )
-from bot.event import (
+from python_mumble_bot.bot.event import (
     AudioEvent,
     ChannelTextEvent,
     RecordEvent,
@@ -176,7 +176,7 @@ class RecordingManager(EventManager):
 
 
 class StateManager(EventManager):
-    def __init__(self, audio_clips_dir=Path("../audio/")):
+    def __init__(self, audio_clips_dir=Path("audio/")):
         self.audio_clips_dir = audio_clips_dir
         self.state = dict()
 

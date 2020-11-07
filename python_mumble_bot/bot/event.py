@@ -1,6 +1,6 @@
 import os
 
-from bot.constants import ROOT_CHANNEL
+from python_mumble_bot.bot.constants import ROOT_CHANNEL
 
 
 class Event:

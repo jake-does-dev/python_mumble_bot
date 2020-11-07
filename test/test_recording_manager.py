@@ -2,8 +2,8 @@ import os
 import sys
 from test.mocks import MockMumbleWrapper, MockSound, MockUserWrapper
 
-from bot.event import Event, RecordEvent
-from bot.manager import RecordingManager
+from python_mumble_bot.bot.event import Event, RecordEvent
+from python_mumble_bot.bot.manager import RecordingManager
 
 sys.path.append(os.path.relpath("./python_mumble_bot"))
 

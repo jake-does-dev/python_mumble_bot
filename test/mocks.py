@@ -1,4 +1,4 @@
-from bot.api_wrapper import ChannelWrapper, MumbleWrapper, UserWrapper
+from python_mumble_bot.bot.api_wrapper import ChannelWrapper, MumbleWrapper, UserWrapper
 
 
 class MockMumbleWrapper(MumbleWrapper):

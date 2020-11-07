@@ -3,7 +3,7 @@ import sys
 
 sys.path.append(os.path.relpath("./python_mumble_bot"))
 
-from bot.command import (
+from python_mumble_bot.bot.command import (
     Command,
     CommandResolver,
     DotaCommand,
@@ -14,7 +14,7 @@ from bot.command import (
     RandomCommand,
     RecordCommand,
 )
-from bot.constants import (
+from python_mumble_bot.bot.constants import (
     AUDIO_CLIPS_BY_ID,
     AUDIO_CLIPS_BY_NAME,
     H4,
@@ -28,8 +28,13 @@ from bot.constants import (
     UL,
     UL_END,
 )
-from bot.event import AudioEvent, ChannelTextEvent, RecordEvent, UserTextEvent
-from bot.message import Message
+from python_mumble_bot.bot.event import (
+    AudioEvent,
+    ChannelTextEvent,
+    RecordEvent,
+    UserTextEvent,
+)
+from python_mumble_bot.bot.message import Message
 
 command_resolver = CommandResolver()
 
