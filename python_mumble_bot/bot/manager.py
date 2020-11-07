@@ -1,10 +1,16 @@
 import datetime as dt
+import math
 import os
 import subprocess as sp
 import wave
 from pathlib import Path
 
-from bot.constants import AUDIO_CLIPS_MAPPING, BITRATE, DEFAULT_RECORDING_DIR
+from bot.constants import (
+    AUDIO_CLIPS_BY_ID,
+    AUDIO_CLIPS_BY_NAME,
+    BITRATE,
+    DEFAULT_RECORDING_DIR,
+)
 from bot.event import (
     AudioEvent,
     ChannelTextEvent,
@@ -38,10 +44,52 @@ class PlaybackManager(EventManager):
         return isinstance(event, AudioEvent)
 
     def dispatch(self, event):
-        file_mapping = self.state_manager.state[AUDIO_CLIPS_MAPPING]
-        for name in event.data:
-            file = file_mapping[name]
-            encode_command = ["ffmpeg", "-i", file, "-ac", "1", "-f", "s16le", "-"]
+        for ref, speed in zip(event.data, event.playback_speed):
+            if ref.isnumeric():
+                file_resolver = self.state_manager.find_audio_clip_by_id
+            else:
+                file_resolver = self.state_manager.find_audio_clip_by_name
+
+            file = file_resolver(ref)
+            desired_speed = float(speed[:-1])
+
+            # Api limitations for speed change in range (0.5, 2).
+            # Can work around by concatenating speeds together, e.g, atempo=2.0,atempo=2.0 for 4x speed
+            if desired_speed < 0.5:
+                num_required = 1
+                while desired_speed < 0.5:
+                    num_required = num_required * 2
+                    desired_speed = math.sqrt(desired_speed)
+
+                desired_speed = round(desired_speed, 2)
+                tempo_command = ",".join(
+                    ["atempo=" + str(desired_speed) for i in range(0, num_required)]
+                )
+            elif desired_speed > 2:
+                num_required = 1
+                while desired_speed > 2:
+                    num_required = num_required * 2
+                    desired_speed = math.sqrt(desired_speed)
+
+                desired_speed = round(desired_speed, 2)
+                tempo_command = ",".join(
+                    ["atempo=" + str(desired_speed) for i in range(0, num_required)]
+                )
+            else:
+                tempo_command = "".join(["atempo=", str(desired_speed)])
+
+            encode_command = [
+                "ffmpeg",
+                "-i",
+                file,
+                "-filter:a",
+                tempo_command,
+                "-ac",
+                "1",
+                "-f",
+                "s16le",
+                "-",
+            ]
             print(encode_command)
             pcm = sp.Popen(
                 encode_command, stdout=sp.PIPE, stderr=sp.DEVNULL
@@ -139,11 +187,31 @@ class StateManager(EventManager):
         audio_dir = self.audio_clips_dir
 
         (_, _, file_paths) = next(os.walk(audio_dir))
+
+        file_paths = sorted(file_paths)
         names = [f.split(".")[0] for f in file_paths]
 
-        self.state[AUDIO_CLIPS_MAPPING] = dict(
-            zip(names, [audio_dir.joinpath(f) for f in file_paths])
-        )
+        files = [audio_dir.joinpath(f) for f in file_paths]
 
-    def get_audio_clips(self):
-        return self.state[AUDIO_CLIPS_MAPPING]
+        clips_by_name = dict()
+        clips_by_id = dict()
+        for i, name in enumerate(names):
+            clips_by_name[name] = files[i]
+            clips_by_id[str(i)] = files[i]
+
+        self.state[AUDIO_CLIPS_BY_NAME] = clips_by_name
+        self.state[AUDIO_CLIPS_BY_ID] = clips_by_id
+
+    def get_audio_clips_by_id(self):
+        return self.state[AUDIO_CLIPS_BY_ID]
+
+    def get_audio_clips_by_name(self):
+        return self.state[AUDIO_CLIPS_BY_NAME]
+
+    def find_audio_clip_by_id(self, identifier):
+        audio_clips_map = self.get_audio_clips_by_id()
+        return audio_clips_map.get(identifier)
+
+    def find_audio_clip_by_name(self, name):
+        audio_clips_map = self.get_audio_clips_by_name()
+        return audio_clips_map.get(name)

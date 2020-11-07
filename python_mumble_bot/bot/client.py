@@ -67,7 +67,8 @@ class Client:
     # noinspection PyUnresolvedReferences
     def set_callbacks(self):
         self.mumble.callbacks.set_callback(
-            pymumble.constants.PYMUMBLE_CLBK_TEXTMESSAGERECEIVED, self.interpret_command
+            pymumble.constants.PYMUMBLE_CLBK_TEXTMESSAGERECEIVED,
+            self.interpret_command,
         )
 
     def interpret_command(self, incoming):
