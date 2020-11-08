@@ -2,11 +2,7 @@ import argparse
 import os
 import random
 
-from python_mumble_bot.bot.constants import (
-    AUDIO_CLIPS_BY_ID,
-    AUDIO_CLIPS_BY_NAME,
-    ROOT_CHANNEL,
-)
+from python_mumble_bot.bot.constants import IDENTIFIER, NAME, ROOT_CHANNEL
 from python_mumble_bot.bot.event import (
     AudioEvent,
     ChannelTextEvent,
@@ -39,6 +35,10 @@ class CommandResolver:
                     commands = RecordCommand(parts[2])
                 elif action == "dota":
                     commands = DotaCommand()
+                elif action == "tag":
+                    commands = TagCommand(parts[2:])
+                elif action == "untag":
+                    commands = UntagCommand(parts[2:])
                 else:
                     commands = InvalidCommand()
 
@@ -52,7 +52,7 @@ class Command:
     def __eq__(self, other):
         return self.data == other.data
 
-    def generate_events(self, state, user):
+    def generate_events(self, mongo_interface, user):
         return None
 
 
@@ -65,9 +65,15 @@ class ListCommand(RefreshCommand):
     def __init__(self):
         super().__init__()
 
-    def generate_events(self, state, user):
-        names = [k for k in state[AUDIO_CLIPS_BY_NAME].keys()]
-        ids = [k for k in state[AUDIO_CLIPS_BY_ID].keys()]
+    def generate_events(self, mongo_interface, user):
+        clips = sorted([(c[NAME], c[IDENTIFIER]) for c in mongo_interface.get_clips()])
+        names = []
+        ids = []
+
+        for name, identifier in clips:
+            names.append(name)
+            ids.append(identifier)
+
         starting_char = [n[0] for n in names]
 
         elems_map = dict()
@@ -99,7 +105,7 @@ class ListCommand(RefreshCommand):
 class DotaCommand(Command):
     GAME_MODES = ["diretide", "turbo", "allpick"]
 
-    def generate_events(self, state, user):
+    def generate_events(self, mongo_interface, user):
         chosen = random.choice(self.GAME_MODES)
         return [ChannelTextEvent(chosen, channel_name=os.getenv(ROOT_CHANNEL))]
 
@@ -108,7 +114,7 @@ class RandomCommand(Command):
     def __init__(self, data):
         super().__init__(data)
 
-    def generate_events(self, state, user):
+    def generate_events(self, mongo_interface, user):
         parser = argparse.ArgumentParser()
         parser.add_argument("--minSpeed")
         parser.add_argument("--maxSpeed")
@@ -124,7 +130,7 @@ class RandomCommand(Command):
         if max_speed is None:
             max_speed = "1x"
 
-        file_names = list(state[AUDIO_CLIPS_BY_NAME].keys())
+        file_names = mongo_interface.get_all_file_names()
         chosen = []
         speeds = []
 
@@ -155,7 +161,7 @@ class RecordCommand(Command):
     def __init__(self, command):
         super().__init__(command)
 
-    def generate_events(self, state, user):
+    def generate_events(self, mongo_interface, user):
         return [RecordEvent(self.data)]
 
 
@@ -187,7 +193,7 @@ class PlayCommand(Command):
         self.playback_speeds = speeds
         self.data = files
 
-    def generate_events(self, state, user):
+    def generate_events(self, mongo_interface, user):
         return [AudioEvent(self.data, self.playback_speeds)]
 
     @staticmethod
@@ -195,11 +201,51 @@ class PlayCommand(Command):
         return speed.endswith("x")
 
 
+class TagCommand(Command):
+    def __init__(self, data):
+        super().__init__(data)
+
+    def generate_events(self, mongo_interface, user):
+        tag = self.data[0]
+        files = self.data[1:]
+        for f in files:
+            mongo_interface.tag(f, tag)
+        text_output = "".join(
+            [
+                'The following files have now been tagged with "',
+                tag,
+                '": ',
+                ",".join(files),
+            ]
+        )
+        return [UserTextEvent(text_output, user)]
+
+
+class UntagCommand(Command):
+    def __init__(self, data):
+        super().__init__(data)
+
+    def generate_events(self, mongo_interface, user):
+        tag = self.data[0]
+        files = self.data[1:]
+        for f in files:
+            mongo_interface.untag(f, tag)
+        text_output = "".join(
+            [
+                'The following files have now been untagged with "',
+                tag,
+                '": ',
+                ",".join(files),
+            ]
+        )
+        return [UserTextEvent(text_output, user)]
+
+
 class InvalidCommand(Command):
     def __init__(self):
         super().__init__()
 
-    def generate_events(self, state, user):
+    def generate_events(self, mongo_interface, user):
         return [UserTextEvent(self.data, user)]
 
 
@@ -207,5 +253,5 @@ class IgnoreCommand(Command):
     def __init__(self):
         super().__init__()
 
-    def generate_events(self, state, user):
+    def generate_events(self, mongo_interface, user):
         return [UserTextEvent(self.data, user)]

@@ -1,0 +1,7 @@
+# Run the following in python
+
+client.clips.clips.create_index(NAME, unique=True)
+client.clips.clips.create_index(FILE, unique=True)
+client.clips.clips.create_index(IDENTIFIER, unique=True)
+
+client.clips.identifiers.create_index(FILE_PREFIX, unique=True)

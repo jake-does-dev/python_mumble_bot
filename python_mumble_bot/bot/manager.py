@@ -1,16 +1,10 @@
 import datetime as dt
 import math
-import os
 import subprocess as sp
 import wave
 from pathlib import Path
 
-from python_mumble_bot.bot.constants import (
-    AUDIO_CLIPS_BY_ID,
-    AUDIO_CLIPS_BY_NAME,
-    BITRATE,
-    DEFAULT_RECORDING_DIR,
-)
+from python_mumble_bot.bot.constants import BITRATE, DEFAULT_RECORDING_DIR
 from python_mumble_bot.bot.event import (
     AudioEvent,
     ChannelTextEvent,
@@ -45,12 +39,7 @@ class PlaybackManager(EventManager):
 
     def dispatch(self, event):
         for ref, speed in zip(event.data, event.playback_speed):
-            if ref.isnumeric():
-                file_resolver = self.state_manager.find_audio_clip_by_id
-            else:
-                file_resolver = self.state_manager.find_audio_clip_by_name
-
-            file = file_resolver(ref)
+            file = self.state_manager.find_audio_clip(ref)
             desired_speed = float(speed[:-1])
 
             # Api limitations for speed change in range (0.5, 2).
@@ -176,42 +165,15 @@ class RecordingManager(EventManager):
 
 
 class StateManager(EventManager):
-    def __init__(self, audio_clips_dir=Path("audio/")):
+    def __init__(self, mongo_interface, audio_clips_dir=Path("audio/")):
+        self.mongo_interface = mongo_interface
         self.audio_clips_dir = audio_clips_dir
-        self.state = dict()
+
+    def connect(self):
+        self.mongo_interface.connect()
 
     def refresh_state(self):
-        self._refresh_audio_clips()
+        self.mongo_interface.refresh()
 
-    def _refresh_audio_clips(self):
-        audio_dir = self.audio_clips_dir
-
-        (_, _, file_paths) = next(os.walk(audio_dir))
-
-        file_paths = sorted(file_paths)
-        names = [f.split(".")[0] for f in file_paths]
-
-        files = [audio_dir.joinpath(f) for f in file_paths]
-
-        clips_by_name = dict()
-        clips_by_id = dict()
-        for i, name in enumerate(names):
-            clips_by_name[name] = files[i]
-            clips_by_id[str(i)] = files[i]
-
-        self.state[AUDIO_CLIPS_BY_NAME] = clips_by_name
-        self.state[AUDIO_CLIPS_BY_ID] = clips_by_id
-
-    def get_audio_clips_by_id(self):
-        return self.state[AUDIO_CLIPS_BY_ID]
-
-    def get_audio_clips_by_name(self):
-        return self.state[AUDIO_CLIPS_BY_NAME]
-
-    def find_audio_clip_by_id(self, identifier):
-        audio_clips_map = self.get_audio_clips_by_id()
-        return audio_clips_map.get(identifier)
-
-    def find_audio_clip_by_name(self, name):
-        audio_clips_map = self.get_audio_clips_by_name()
-        return audio_clips_map.get(name)
+    def find_audio_clip(self, ref):
+        return self.audio_clips_dir.joinpath(self.mongo_interface.get_file_by_ref(ref))

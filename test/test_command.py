@@ -1,5 +1,8 @@
 import os
 import sys
+from unittest import mock
+
+from python_mumble_bot.db.mongodb import MongoInterface
 
 sys.path.append(os.path.relpath("./python_mumble_bot"))
 
@@ -15,10 +18,10 @@ from python_mumble_bot.bot.command import (
     RecordCommand,
 )
 from python_mumble_bot.bot.constants import (
-    AUDIO_CLIPS_BY_ID,
-    AUDIO_CLIPS_BY_NAME,
     H4,
     H4_END,
+    IDENTIFIER,
+    NAME,
     TABLE,
     TABLE_END,
     TD,
@@ -101,12 +104,14 @@ def test_invalid_unknown_command():
 
 
 def test_event_from_list_command():
-    state = dict()
-    state[AUDIO_CLIPS_BY_NAME] = {"awesome": "a.wav", "bingo": "b.wav"}
-    state[AUDIO_CLIPS_BY_ID] = {"0": "a.wav", "1": "b.wav"}
+    mock_mongo_interface = mock.create_autospec(MongoInterface)
+    mock_mongo_interface.get_clips.return_value = [
+        {IDENTIFIER: "0", NAME: "awesome"},
+        {IDENTIFIER: "1", NAME: "bingo"},
+    ]
 
     command = ListCommand()
-    event = command.generate_events(state, None)
+    event = command.generate_events(mock_mongo_interface, None)
 
     expected_html = "".join(
         [
@@ -178,20 +183,17 @@ def test_event_from_play_command_by_id():
 
 
 def test_event_from_random_command():
-    state = dict()
-    state[AUDIO_CLIPS_BY_NAME] = {
-        "awesome": "a.wav",
-        "bingo": "b.wav",
-        "charlie": "c.wav",
-        "delta": "d.wav",
-    }
+    mock_mongo_interface = mock.create_autospec(MongoInterface)
+
+    names = ["awesome", "bingo", "charlie", "delta"]
+    mock_mongo_interface.get_all_file_names.return_value = names
 
     command = RandomCommand("3")
-    events = command.generate_events(state, None)
+    events = command.generate_events(mock_mongo_interface, None)
 
     assert isinstance(events[0], UserTextEvent)
     assert isinstance(events[1], AudioEvent)
-    assert set(events[1].data).issubset(state[AUDIO_CLIPS_BY_NAME].keys())
+    assert set(events[1].data).issubset(set(names))
 
 
 def test_event_from_record_command():
