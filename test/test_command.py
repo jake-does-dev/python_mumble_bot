@@ -81,7 +81,7 @@ def test_resolve_list():
     incoming = Message("/pmb list")
     command = command_resolver.resolve(incoming)
 
-    assert command == ListCommand()
+    assert command == ListCommand(None)
 
 
 def test_ignore():
@@ -110,7 +110,7 @@ def test_event_from_list_command():
         {IDENTIFIER: "1", NAME: "bingo"},
     ]
 
-    command = ListCommand()
+    command = ListCommand(None)
     event = command.generate_events(mock_mongo_interface, None)
 
     expected_html = "".join(

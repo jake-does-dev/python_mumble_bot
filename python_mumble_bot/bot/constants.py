@@ -27,3 +27,5 @@ TAGS = "tags"
 FILE_PREFIX = "file_prefix"
 IDENTIFIER_PREFIX = "identifier_prefix"
 NEXT_ID = "next_id"
+
+DATE_FORMAT = "%Y-%m-%d %H:%M:%S"

@@ -26,7 +26,10 @@ class CommandResolver:
             else:
                 action = parts[1]
                 if action == "list":
-                    commands = ListCommand()
+                    if len(parts) == 2:
+                        commands = ListCommand(None)
+                    else:
+                        commands = ListCommand(parts[2])
                 elif action == "play":
                     commands = PlayCommand(parts[2:])
                 elif action == "random":
@@ -39,6 +42,8 @@ class CommandResolver:
                     commands = TagCommand(parts[2:])
                 elif action == "untag":
                     commands = UntagCommand(parts[2:])
+                elif action == "load":
+                    commands = LoadClipsCommand()
                 else:
                     commands = InvalidCommand()
 
@@ -62,11 +67,14 @@ class RefreshCommand(Command):
 
 
 class ListCommand(RefreshCommand):
-    def __init__(self):
+    def __init__(self, tag):
         super().__init__()
+        self.tag = tag
 
     def generate_events(self, mongo_interface, user):
-        clips = sorted([(c[NAME], c[IDENTIFIER]) for c in mongo_interface.get_clips()])
+        clips = sorted(
+            [(c[NAME], c[IDENTIFIER]) for c in mongo_interface.get_clips(self.tag)]
+        )
         names = []
         ids = []
 
@@ -99,7 +107,18 @@ class ListCommand(RefreshCommand):
             table = tables_map[k]
             html = html + "".join(["<h4>", k, "</h4>", "<ul>", table, "</ul>"])
 
-        return [UserTextEvent(html, user)]
+        event = [UserTextEvent(html, user)]
+        if html == "":
+            if self.tag is None:
+                event = [ChannelTextEvent("No clips found in Mongo!!!")]
+            else:
+                event = [
+                    UserTextEvent(
+                        "".join(["No clips found with tag: ", self.tag]), user
+                    )
+                ]
+
+        return event
 
 
 class DotaCommand(Command):
@@ -201,44 +220,65 @@ class PlayCommand(Command):
         return speed.endswith("x")
 
 
-class TagCommand(Command):
+class AbstractTagCommand(Command):
     def __init__(self, data):
         super().__init__(data)
 
     def generate_events(self, mongo_interface, user):
+        if isinstance(self, TagCommand):
+            tagging_function = mongo_interface.tag
+            output_start = 'The following files have now been tagged with "'
+        elif isinstance(self, UntagCommand):
+            tagging_function = mongo_interface.untag
+            output_start = 'The following files have now been untagged with "'
+        else:
+            raise TypeError("AbstractTagCommand is not of a known subclass")
+
         tag = self.data[0]
         files = self.data[1:]
-        for f in files:
-            mongo_interface.tag(f, tag)
+        tagging_function(files, tag)
+
         text_output = "".join(
             [
-                'The following files have now been tagged with "',
+                output_start,
                 tag,
                 '": ',
                 ",".join(files),
             ]
         )
-        return [UserTextEvent(text_output, user)]
+        return [ChannelTextEvent(text_output)]
 
 
-class UntagCommand(Command):
+class TagCommand(AbstractTagCommand):
     def __init__(self, data):
         super().__init__(data)
 
+
+class UntagCommand(AbstractTagCommand):
+    def __init__(self, data):
+        super().__init__(data)
+
+
+class LoadClipsCommand(Command):
+    def __init__(self):
+        super().__init__()
+
     def generate_events(self, mongo_interface, user):
-        tag = self.data[0]
-        files = self.data[1:]
-        for f in files:
-            mongo_interface.untag(f, tag)
-        text_output = "".join(
-            [
-                'The following files have now been untagged with "',
-                tag,
-                '": ',
-                ",".join(files),
-            ]
-        )
-        return [UserTextEvent(text_output, user)]
+        new_clips = mongo_interface.add_new_clips()
+
+        print("loaded")
+
+        clips_formatted = []
+        for identifier, name in new_clips:
+            clips_formatted.append(" -> ".join([identifier, name]))
+
+        text_output = ", ".join(clips_formatted)
+
+        return [
+            ChannelTextEvent(
+                "".join(["The following clips have been loaded: ", text_output])
+            )
+        ]
 
 
 class InvalidCommand(Command):
