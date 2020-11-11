@@ -26,7 +26,7 @@ FROM base AS runtime
 
 # Copy virtual env from python-deps stage
 COPY --from=python-deps /.venv /.venv
-ENV PATH="/.venv/bin:$PATH"
+ENV PATH='/.venv/bin:$PATH'
 
 # Create and switch to a new user
 RUN useradd --create-home appuser
@@ -37,5 +37,5 @@ USER appuser
 COPY . .
 
 # Run the executable
-ENTRYPOINT ["python", "-m", "python_mumble_bot"]
-CMD ["10"]
+ENTRYPOINT ['python', '-m', 'python_mumble_bot']
+CMD ['10']

@@ -17,3 +17,15 @@ PASSWORD = "MUMBLE_SERVER_PASSWORD"
 VALID_AUDIO_FORMATS = [".wav", ".mp3"]
 BITRATE = 48000
 DEFAULT_RECORDING_DIR = "/mnt/f/Users/Jake/Documents/MumbleRecordings/"
+
+ID = "_id"
+IDENTIFIER = "identifier"
+NAME = "name"
+FILE = "file"
+CREATION_TIME = "creation_time"
+TAGS = "tags"
+FILE_PREFIX = "file_prefix"
+IDENTIFIER_PREFIX = "identifier_prefix"
+NEXT_ID = "next_id"
+
+DATE_FORMAT = "%Y-%m-%d %H:%M:%S"

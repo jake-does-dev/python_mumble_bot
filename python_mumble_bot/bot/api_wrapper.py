@@ -1,9 +1,12 @@
+from python_mumble_bot.bot.constants import NAME
+
+
 class UserWrapper:
     def __init__(self, user):
         self.user = user
 
     def get_name(self):
-        return self.user["name"]
+        return self.user[NAME]
 
     def is_sound(self):
         return self.user.sound.is_sound()

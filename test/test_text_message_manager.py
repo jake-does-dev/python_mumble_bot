@@ -1,7 +1,7 @@
 from test.mocks import MockChannelWrapper, MockMumbleWrapper, MockUserWrapper
 
-from bot.event import ChannelTextEvent, Event, UserTextEvent
-from bot.manager import TextMessageManager
+from python_mumble_bot.bot.event import ChannelTextEvent, Event, UserTextEvent
+from python_mumble_bot.bot.manager import TextMessageManager
 
 
 def test_accept_events():

@@ -2,8 +2,13 @@ import argparse
 import os
 import random
 
-from bot.constants import AUDIO_CLIPS_BY_ID, AUDIO_CLIPS_BY_NAME, ROOT_CHANNEL
-from bot.event import AudioEvent, ChannelTextEvent, RecordEvent, UserTextEvent
+from python_mumble_bot.bot.constants import IDENTIFIER, NAME, ROOT_CHANNEL
+from python_mumble_bot.bot.event import (
+    AudioEvent,
+    ChannelTextEvent,
+    RecordEvent,
+    UserTextEvent,
+)
 
 
 class CommandResolver:
@@ -21,7 +26,10 @@ class CommandResolver:
             else:
                 action = parts[1]
                 if action == "list":
-                    commands = ListCommand()
+                    if len(parts) == 2:
+                        commands = ListCommand(None)
+                    else:
+                        commands = ListCommand(parts[2])
                 elif action == "play":
                     commands = PlayCommand(parts[2:])
                 elif action == "random":
@@ -30,6 +38,12 @@ class CommandResolver:
                     commands = RecordCommand(parts[2])
                 elif action == "dota":
                     commands = DotaCommand()
+                elif action == "tag":
+                    commands = TagCommand(parts[2:])
+                elif action == "untag":
+                    commands = UntagCommand(parts[2:])
+                elif action == "load":
+                    commands = LoadClipsCommand()
                 else:
                     commands = InvalidCommand()
 
@@ -43,7 +57,7 @@ class Command:
     def __eq__(self, other):
         return self.data == other.data
 
-    def generate_events(self, state, user):
+    def generate_events(self, mongo_interface, user):
         return None
 
 
@@ -53,12 +67,21 @@ class RefreshCommand(Command):
 
 
 class ListCommand(RefreshCommand):
-    def __init__(self):
+    def __init__(self, tag):
         super().__init__()
+        self.tag = tag
 
-    def generate_events(self, state, user):
-        names = [k for k in state[AUDIO_CLIPS_BY_NAME].keys()]
-        ids = [k for k in state[AUDIO_CLIPS_BY_ID].keys()]
+    def generate_events(self, mongo_interface, user):
+        clips = sorted(
+            [(c[NAME], c[IDENTIFIER]) for c in mongo_interface.get_clips(self.tag)]
+        )
+        names = []
+        ids = []
+
+        for name, identifier in clips:
+            names.append(name)
+            ids.append(identifier)
+
         starting_char = [n[0] for n in names]
 
         elems_map = dict()
@@ -84,13 +107,24 @@ class ListCommand(RefreshCommand):
             table = tables_map[k]
             html = html + "".join(["<h4>", k, "</h4>", "<ul>", table, "</ul>"])
 
-        return [UserTextEvent(html, user)]
+        event = [UserTextEvent(html, user)]
+        if html == "":
+            if self.tag is None:
+                event = [ChannelTextEvent("No clips found in Mongo!!!")]
+            else:
+                event = [
+                    UserTextEvent(
+                        "".join(["No clips found with tag: ", self.tag]), user
+                    )
+                ]
+
+        return event
 
 
 class DotaCommand(Command):
     GAME_MODES = ["diretide", "turbo", "allpick"]
 
-    def generate_events(self, state, user):
+    def generate_events(self, mongo_interface, user):
         chosen = random.choice(self.GAME_MODES)
         return [ChannelTextEvent(chosen, channel_name=os.getenv(ROOT_CHANNEL))]
 
@@ -99,7 +133,7 @@ class RandomCommand(Command):
     def __init__(self, data):
         super().__init__(data)
 
-    def generate_events(self, state, user):
+    def generate_events(self, mongo_interface, user):
         parser = argparse.ArgumentParser()
         parser.add_argument("--minSpeed")
         parser.add_argument("--maxSpeed")
@@ -115,7 +149,7 @@ class RandomCommand(Command):
         if max_speed is None:
             max_speed = "1x"
 
-        file_names = list(state[AUDIO_CLIPS_BY_NAME].keys())
+        file_names = mongo_interface.get_all_file_names()
         chosen = []
         speeds = []
 
@@ -146,7 +180,7 @@ class RecordCommand(Command):
     def __init__(self, command):
         super().__init__(command)
 
-    def generate_events(self, state, user):
+    def generate_events(self, mongo_interface, user):
         return [RecordEvent(self.data)]
 
 
@@ -178,7 +212,7 @@ class PlayCommand(Command):
         self.playback_speeds = speeds
         self.data = files
 
-    def generate_events(self, state, user):
+    def generate_events(self, mongo_interface, user):
         return [AudioEvent(self.data, self.playback_speeds)]
 
     @staticmethod
@@ -186,11 +220,72 @@ class PlayCommand(Command):
         return speed.endswith("x")
 
 
+class AbstractTagCommand(Command):
+    def __init__(self, data):
+        super().__init__(data)
+
+    def generate_events(self, mongo_interface, user):
+        if isinstance(self, TagCommand):
+            tagging_function = mongo_interface.tag
+            output_start = 'The following files have now been tagged with "'
+        elif isinstance(self, UntagCommand):
+            tagging_function = mongo_interface.untag
+            output_start = 'The following files have now been untagged with "'
+        else:
+            raise TypeError("AbstractTagCommand is not of a known subclass")
+
+        tag = self.data[0]
+        files = self.data[1:]
+        tagging_function(files, tag)
+
+        text_output = "".join(
+            [
+                output_start,
+                tag,
+                '": ',
+                ",".join(files),
+            ]
+        )
+        return [ChannelTextEvent(text_output)]
+
+
+class TagCommand(AbstractTagCommand):
+    def __init__(self, data):
+        super().__init__(data)
+
+
+class UntagCommand(AbstractTagCommand):
+    def __init__(self, data):
+        super().__init__(data)
+
+
+class LoadClipsCommand(Command):
+    def __init__(self):
+        super().__init__()
+
+    def generate_events(self, mongo_interface, user):
+        new_clips = mongo_interface.add_new_clips()
+
+        print("loaded")
+
+        clips_formatted = []
+        for identifier, name in new_clips:
+            clips_formatted.append(" -> ".join([identifier, name]))
+
+        text_output = ", ".join(clips_formatted)
+
+        return [
+            ChannelTextEvent(
+                "".join(["The following clips have been loaded: ", text_output])
+            )
+        ]
+
+
 class InvalidCommand(Command):
     def __init__(self):
         super().__init__()
 
-    def generate_events(self, state, user):
+    def generate_events(self, mongo_interface, user):
         return [UserTextEvent(self.data, user)]
 
 
@@ -198,5 +293,5 @@ class IgnoreCommand(Command):
     def __init__(self):
         super().__init__()
 
-    def generate_events(self, state, user):
+    def generate_events(self, mongo_interface, user):
         return [UserTextEvent(self.data, user)]

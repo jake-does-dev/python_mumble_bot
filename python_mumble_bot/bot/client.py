@@ -1,15 +1,17 @@
 import os
 
 import pymumble_py3 as pymumble
-from bot.api_wrapper import MumbleWrapper
-from bot.command import CommandResolver, RefreshCommand
-from bot.constants import HOSTNAME, PASSWORD
-from bot.manager import (
+
+from python_mumble_bot.bot.api_wrapper import MumbleWrapper
+from python_mumble_bot.bot.command import CommandResolver, RefreshCommand
+from python_mumble_bot.bot.constants import HOSTNAME, PASSWORD
+from python_mumble_bot.bot.manager import (
     PlaybackManager,
     RecordingManager,
     StateManager,
     TextMessageManager,
 )
+from python_mumble_bot.db.mongodb import MongoInterface
 
 
 def connect():
@@ -42,7 +44,10 @@ class Client:
         self.command_resolver = CommandResolver()
         self.managers = dict()
 
-        state_manager = StateManager() if state_manager is None else state_manager
+        state_manager = (
+            StateManager(MongoInterface()) if state_manager is None else state_manager
+        )
+        state_manager.connect()
         playback_manager = (
             PlaybackManager(self.mumble, state_manager)
             if playback_manager is None
@@ -78,7 +83,7 @@ class Client:
             self.managers[self.STATE_MANAGER].refresh_state()
 
         events = command.generate_events(
-            self.managers[self.STATE_MANAGER].state,
+            self.managers[self.STATE_MANAGER].mongo_interface,
             self.mumble.users.get(incoming.actor),
         )
         for event in events:
