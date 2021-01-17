@@ -18,13 +18,7 @@ from python_mumble_bot.bot.constants import (
 
 
 class MongoInterface:
-    CONNECTION_STR = "".join(
-        [
-            "mongodb+srv://appUser:",
-            os.getenv("PMB_MONGODB_PASSWORD"),
-            "@python-mumble-bot.r2fj8.mongodb.net/clips?retryWrites=true&w=majority",
-        ]
-    )
+    CONNECTION_STR = "mongodb://127.0.0.1:27017"
     NEW_CLIPS_PATH = Path("audio/new/")
     ALL_CLIPS_PATH = Path("audio/")
     NEW_CLIP_DAY_THRESHOLD = 2
