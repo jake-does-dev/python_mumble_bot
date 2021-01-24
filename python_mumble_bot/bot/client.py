@@ -16,7 +16,7 @@ from python_mumble_bot.db.mongodb import MongoInterface
 
 def connect():
     mumble = pymumble.Mumble(
-        os.getenv(HOSTNAME), "PythonMumbleBot", password=os.getenv(PASSWORD)
+        "mumble.oliver.youle.io", "PythonMumbleBot", password="mineshite"
     )
 
     client = Client(mumble)

@@ -14,11 +14,23 @@ from python_mumble_bot.bot.constants import (
     NAME,
     NEXT_ID,
     TAGS,
+    MONGODB_HOST,
+    MONGODB_USERNAME,
+    MONGODB_PASSWORD,
 )
 
 
 class MongoInterface:
-    CONNECTION_STR = "mongodb://127.0.0.1:27017"
+    CONNECTION_STRING = "".join(
+        ["mongodb://",
+         os.getenv(MONGODB_USERNAME),
+         ":",
+         os.getenv(MONGODB_PASSWORD),
+         "@",
+         os.getenv(MONGODB_HOST),
+         ":27017/voice_clips"]
+    )
+
     NEW_CLIPS_PATH = Path("audio/new/")
     ALL_CLIPS_PATH = Path("audio/")
     NEW_CLIP_DAY_THRESHOLD = 2
@@ -29,7 +41,7 @@ class MongoInterface:
         self.clips_collection = None
 
     def connect(self):
-        self.client = pymongo.MongoClient(self.CONNECTION_STR)
+        self.client = pymongo.MongoClient(self.CONNECTION_STRING)
 
     def set_up_identifiers(self):
         id_prefix_map = {
@@ -48,11 +60,11 @@ class MongoInterface:
                 IDENTIFIER_PREFIX: identifier_prefix,
                 NEXT_ID: 0,
             }
-            self.client.clips.identifiers.insert_one(id_doc)
+            self.client.voice_clips.identifiers.insert_one(id_doc)
 
     def refresh(self):
-        self.file_prefixes_collection = self.client.clips.identifiers
-        self.clips_collection = self.client.clips.clips
+        self.file_prefixes_collection = self.client.voice_clips.identifiers
+        self.clips_collection = self.client.voice_clips.clips
 
     def add_clip(self, file, upload_time=datetime.now(), tags=None):
         if tags is None:
@@ -88,8 +100,8 @@ class MongoInterface:
             TAGS: tags,
         }
 
-        self.client.clips.clips.insert_one(document)
-        self.client.clips.identifiers.update_one(
+        self.client.voice_clips.clips.insert_one(document)
+        self.client.voice_clips.identifiers.update_one(
             {"_id": prefix_doc_id}, {"$set": {NEXT_ID: identifier_number + 1}}
         )
 
@@ -138,7 +150,7 @@ class MongoInterface:
             tags.append(tag)
             tags = sorted(list(set(tags)))
 
-            self.client.clips.clips.update_one(
+            self.client.voice_clips.clips.update_one(
                 {"_id": file[ID]}, {"$set": {TAGS: tags}}
             )
         self.refresh()
@@ -150,7 +162,7 @@ class MongoInterface:
             tags.remove(tag)
             tags = sorted(list(set(tags)))
 
-            self.client.clips.clips.update_one(
+            self.client.voice_clips.clips.update_one(
                 {"_id": file[ID]}, {"$set": {TAGS: tags}}
             )
         self.refresh()
@@ -184,10 +196,10 @@ class MongoInterface:
 def reset_mongo():
     mongo_interface = MongoInterface()
     mongo_interface.connect()
-    mongo_interface.client.clips.clips.delete_many({})
+    mongo_interface.client.voice_clips.clips.delete_many({})
 
-    for identifier_mapping in mongo_interface.client.clips.identifiers.find({}):
-        mongo_interface.client.clips.identifiers.update_one(
+    for identifier_mapping in mongo_interface.client.voice_clips.identifiers.find({}):
+        mongo_interface.client.voice_clips.identifiers.update_one(
             {"_id": identifier_mapping[ID]}, {"$set": {NEXT_ID: 0}}
         )
 
