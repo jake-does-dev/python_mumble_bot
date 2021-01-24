@@ -139,25 +139,33 @@ class RandomCommand(Command):
         parser = argparse.ArgumentParser()
         parser.add_argument("--minSpeed")
         parser.add_argument("--maxSpeed")
+        parser.add_argument("--clips")
 
         num_requested = int(self.data[0])
         args = parser.parse_args(self.data[1:])
 
         min_speed = args.minSpeed
         max_speed = args.maxSpeed
+        clips_csv = args.clips
 
         if min_speed is None:
             min_speed = "1x"
         if max_speed is None:
             max_speed = "1x"
 
-        file_names = mongo_interface.get_all_file_names()
+        if clips_csv is None:
+            clips = mongo_interface.get_all_file_names()
+        else:
+            clips = clips_csv.split(",")
+
+        print(clips)
+
         chosen = []
         speeds = []
 
         if 0 < num_requested < 10:
             for i in range(0, int(num_requested)):
-                chosen.append(random.choice(file_names))
+                chosen.append(random.choice(clips))
                 speed = random.uniform(float(min_speed[:-1]), float(max_speed[:-1]))
                 speeds.append("".join([str(speed), "x"]))
 
