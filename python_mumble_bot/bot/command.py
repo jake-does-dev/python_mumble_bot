@@ -44,6 +44,8 @@ class CommandResolver:
                     commands = UntagCommand(parts[2:])
                 elif action == "load":
                     commands = LoadClipsCommand()
+                elif action == "volume":
+                    commands = VolumeCommand(parts[2])
                 else:
                     commands = InvalidCommand()
 
@@ -295,3 +297,14 @@ class IgnoreCommand(Command):
 
     def generate_events(self, mongo_interface, user):
         return [UserTextEvent(self.data, user)]
+
+
+class VolumeCommand(Command):
+    def __init__(self, data):
+        super().__init__(data)
+
+    def generate_events(self, mongo_interface, user):
+        volume = float(self.data)
+
+        mongo_interface.set_volume(volume)
+        return [ChannelTextEvent("".join(["The bot's volume has been set to: ", self.data]))]

@@ -39,9 +39,11 @@ class MongoInterface:
         self.client = None
         self.file_prefixes_collection = None
         self.clips_collection = None
+        self.volume = None
 
     def connect(self):
         self.client = pymongo.MongoClient(self.CONNECTION_STRING)
+        self.volume = self.get_volume()
 
     def set_up_identifiers(self):
         id_prefix_map = {
@@ -65,6 +67,17 @@ class MongoInterface:
     def refresh(self):
         self.file_prefixes_collection = self.client.voice_clips.identifiers
         self.clips_collection = self.client.voice_clips.clips
+
+    def set_volume(self, volume):
+        self.volume = volume
+        self.client.voice_clips.playback_volume.update_one(
+            {},
+            {"$set": {"playback_volume": volume}}
+        )
+
+    def get_volume(self):
+        record = self.client.voice_clips.playback_volume.find_one({})
+        return record["playback_volume"]
 
     def add_clip(self, file, upload_time=datetime.now(), tags=None):
         if tags is None:
@@ -143,7 +156,6 @@ class MongoInterface:
         return self.clips_collection.find_one({key: ref})
 
     def tag(self, references, tag):
-
         for ref in references:
             file = self._find_file_by_ref(ref)
             tags = file[TAGS]

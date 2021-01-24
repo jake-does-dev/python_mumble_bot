@@ -40,6 +40,7 @@ class PlaybackManager(EventManager):
     def dispatch(self, event):
         for ref, speed in zip(event.data, event.playback_speed):
             file = self.state_manager.find_audio_clip(ref)
+            volume = self.state_manager.get_volume()
             desired_speed = float(speed[:-1])
 
             # Api limitations for speed change in range (0.5, 2).
@@ -51,7 +52,7 @@ class PlaybackManager(EventManager):
                     desired_speed = math.sqrt(desired_speed)
 
                 desired_speed = round(desired_speed, 2)
-                tempo_command = ",".join(
+                tempo_filter = ",".join(
                     ["atempo=" + str(desired_speed) for i in range(0, num_required)]
                 )
             elif desired_speed > 2:
@@ -61,18 +62,21 @@ class PlaybackManager(EventManager):
                     desired_speed = math.sqrt(desired_speed)
 
                 desired_speed = round(desired_speed, 2)
-                tempo_command = ",".join(
+                tempo_filter = ",".join(
                     ["atempo=" + str(desired_speed) for i in range(0, num_required)]
                 )
             else:
-                tempo_command = "".join(["atempo=", str(desired_speed)])
+                tempo_filter = "".join(["atempo=", str(desired_speed)])
+
+            volume_filter = "".join(["volume=", str(volume)])
+            filter = ",".join([tempo_filter, volume_filter])
 
             encode_command = [
                 "ffmpeg",
                 "-i",
                 file,
                 "-filter:a",
-                tempo_command,
+                filter,
                 "-ac",
                 "1",
                 "-f",
@@ -177,3 +181,6 @@ class StateManager(EventManager):
 
     def find_audio_clip(self, ref):
         return self.audio_clips_dir.joinpath(self.mongo_interface.get_file_by_ref(ref))
+
+    def get_volume(self):
+        return self.mongo_interface.get_volume()
