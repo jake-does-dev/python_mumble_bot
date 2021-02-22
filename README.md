@@ -19,7 +19,12 @@ MUMBLE_SERVER_HOST # the ip address of the Mumble server
 MUMBLE_SERVER_USERNAME # the name of the bot
 MUMBLE_SERVER_PASSWORD # the mumble server password
 MUMBLE_SERVER_ROOT_CHANNEL # the root channel on the associated Mumble server
+
+# Create an audio directory, and add the clips to it
+python_mumble_bot/audio
 ```
+
+
 
 ## Credits
 This package was created with Cookiecutter and the [sourcery-ai/python-best-practices-cookiecutter](https://github.com/sourcery-ai/python-best-practices-cookiecutter) project template.
