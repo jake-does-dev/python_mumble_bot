@@ -163,7 +163,7 @@ class RandomCommand(Command):
         chosen = []
         speeds = []
 
-        if 0 < num_requested < 10:
+        if 0 < num_requested < 26:
             for i in range(0, int(num_requested)):
                 chosen.append(random.choice(clips))
                 speed = random.uniform(float(min_speed[:-1]), float(max_speed[:-1]))
