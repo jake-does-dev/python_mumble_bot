@@ -1,5 +1,4 @@
 import os
-
 import pymumble_py3 as pymumble
 
 from python_mumble_bot.bot.api_wrapper import MumbleWrapper
@@ -16,7 +15,9 @@ from python_mumble_bot.db.mongodb import MongoInterface
 
 def connect():
     mumble = pymumble.Mumble(
-        "mumble.oliver.youle.io", "PythonMumbleBot", password="mineshite"
+        os.getenv("MUMBLE_SERVER_HOST"),
+        os.getenv("MUMBLE_SERVER_USERNAME"),
+        os.getenv("MUMBLE_SERVER_PASSWORD")
     )
 
     client = Client(mumble)
