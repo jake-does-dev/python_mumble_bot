@@ -17,8 +17,10 @@ def connect():
     mumble = pymumble.Mumble(
         os.getenv("MUMBLE_SERVER_HOST"),
         os.getenv("MUMBLE_SERVER_USERNAME"),
-        os.getenv("MUMBLE_SERVER_PASSWORD")
+        password=os.getenv("MUMBLE_SERVER_PASSWORD")
+        # debug=True
     )
+    mumble.set_receive_sound = False
 
     client = Client(mumble)
     client.set_callbacks()

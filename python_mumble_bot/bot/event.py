@@ -12,9 +12,18 @@ class Event:
 
 
 class AudioEvent(Event):
-    def __init__(self, data, playback_speeds):
+    def __init__(self, data, playback_speeds, semitone_shifts=None):
         super().__init__(data)
-        self.playback_speed = playback_speeds
+        self.playback_speeds = playback_speeds
+        self.semitone_shifts = semitone_shifts
+
+
+class MusicEvent(Event):
+    def __init__(self, data, piece, speed, root_pitch):
+        super().__init__(data)
+        self.speed = speed
+        self.piece = piece
+        self.root_pitch = root_pitch
 
 
 class RecordEvent(Event):
