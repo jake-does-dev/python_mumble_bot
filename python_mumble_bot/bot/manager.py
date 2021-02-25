@@ -99,6 +99,9 @@ class PlaybackManager(EventManager):
 
             # Extract each voiceline as its own set of audio data
             for voice, notes in measure.items():
+                if notes == []: #entire voiceline is at rest for the measure
+                    continue
+
                 for note_number, note in enumerate(notes):
                     octave = note.octave
                     if root_octave is None:
