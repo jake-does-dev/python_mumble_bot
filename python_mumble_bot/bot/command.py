@@ -6,6 +6,7 @@ from python_mumble_bot.bot.constants import IDENTIFIER, NAME, ROOT_CHANNEL
 from python_mumble_bot.bot.event import (
     AudioEvent,
     ChannelTextEvent,
+    ListMusicEvent,
     RecordEvent,
     UserTextEvent,
     MusicEvent,
@@ -252,19 +253,47 @@ class MusicCommand(Command):
         super().__init__(data)
     
     def generate_events(self, mongo_interface, user):
-        piece = self.data[0]
-        clip = self.data[1]
-        speed = float(self.data[2][:-1])
-        pitch = int(self.data[3][:-1])
+        parser = argparse.ArgumentParser(prefix_chars="@")
+        parser.add_argument("@list", action="store_true")
+        parser.add_argument("@song")
+        parser.add_argument("@clip")
+        parser.add_argument("@speed")
+        parser.add_argument("@pitch")
+        parser.add_argument("@num_bars")
+        parser.add_argument("@volume")
 
-        return [MusicEvent(clip, piece, speed, pitch)]
+        args = parser.parse_args(self.data[0:])
+
+        if args.list:
+            # List clips
+            return [ListMusicEvent(None)]
+        
+        else:
+            song = None
+            if args.song is None:
+                return [ChannelTextEvent("No song specified!")]
+            else:
+                song = args.song
+            
+            clip = None
+            if args.clip is None:
+                return [ChannelTextEvent("No clip specified!")]
+            else:
+                clip = args.clip
+
+            speed = 1 if args.speed is None else float(args.speed[:-1])
+            pitch = 0 if args.pitch is None else int(args.pitch[:-1])
+            volume = 1 if args.volume is None else float(args.volume)
+            num_bars = None if args.num_bars is None else int(args.num_bars)
+
+            return [MusicEvent(clip, song, speed, pitch, num_bars, volume)]
 
     @staticmethod
     def help():
         return "<br>".join(
-            ["Example call: /pmb music Sea_Shanty_2 oy61 1.3x 4s",
-             "Plays the song sea-shanty-2 using the sound clip oy61, at an increased speed of 1.3x and a root pitch of 4 semitones above oy61",
-             "AVAILABLE PIECES: [bach-minuet-in-g, coffin-dance, mario-bros-theme, sea-shanty-2]"])
+            ["Example call: /pmb music @song god-save-the-queen @clip oy17 @speed 3x @pitch 3s @num_bars 16 @volume 1",
+             "Plays the @song god-save-the-queen using the @clip oy61, at an increased @speed of 3x and a root pitch of @3s above the pitch of @clip, for @num_bars bars, at a volume of @volume ",
+             "For all available songs, type /pmb music @list"])
 
 class PlayCommand(Command):
     def __init__(self, data):

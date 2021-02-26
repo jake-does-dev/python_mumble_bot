@@ -19,11 +19,13 @@ class AudioEvent(Event):
 
 
 class MusicEvent(Event):
-    def __init__(self, data, piece, speed, root_pitch):
+    def __init__(self, data, piece, speed, root_pitch, measure_limit, volume):
         super().__init__(data)
         self.speed = speed
         self.piece = piece
         self.root_pitch = root_pitch
+        self.measure_limit = measure_limit
+        self.volume = volume
 
 
 class RecordEvent(Event):
@@ -52,3 +54,8 @@ class UserTextEvent(TextEvent):
 
     def __eq__(self, other):
         return self.data == other.data and self.user == other.user
+
+
+class ListMusicEvent(TextEvent):
+    def __init__(self, data):
+        super().__init__(data)

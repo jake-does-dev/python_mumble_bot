@@ -7,16 +7,18 @@ from pathlib import Path
 
 from python_mumble_bot.musicxml.parser import parse_musicxml
 from python_mumble_bot.music.piece import Note
-from python_mumble_bot.bot.constants import BITRATE, DEFAULT_RECORDING_DIR
+from python_mumble_bot.bot.constants import BITRATE, DEFAULT_RECORDING_DIR, ROOT_CHANNEL
 from python_mumble_bot.bot.event import (
     AudioEvent,
     MusicEvent,
     ChannelTextEvent,
+    ListMusicEvent,
     RecordEvent,
     TextEvent,
     UserTextEvent,
 )
 
+MUSIC_XML_DIR = Path("audio/music")
 
 class EventManager:
     def process(self, event):
@@ -62,21 +64,23 @@ class PlaybackManager(EventManager):
         for ref, speed, shift in zip(event.data, event.playback_speeds, event.semitone_shifts):
             file = self.state_manager.find_audio_clip(ref)
             pcm = self._transform_audio(file, pitch_filter, self.state_manager.get_volume(), float(speed[:-1]), float(shift[:-1]), desired_output='pcm')
+
+            self.mumble.sound_output.set_audio_per_packet(0.001)
             self.mumble.sound_output.add_sound(pcm)
             
     def _play_music(self, event):
         piece = "audio/music/{0}".format(event.piece)
         processing_dir = "audio/music_processing/{0}".format(event.piece)
+        output_file = "audio/music_processing/{0}.wav".format(event.piece)
         clip = event.data
         base_speed = event.speed
         root_pitch = event.root_pitch
+        volume = event.volume
 
-        # music_to_process = self.data
-        # piece = '/tmp/Bach_Minuet_in_G_Major_BWV_Anh._114'
-        # piece = '/tmp/Sea_Shanty_2'
+        measure_limit = None if event.measure_limit is None else event.measure_limit - 1
+
         file = self.state_manager.find_audio_clip(clip)
 
-        # measures = parse_musicxml(music_to_process)
         measures = parse_musicxml('{0}.xml'.format(piece))
 
         measure_duration = measures['measure_length']
@@ -92,6 +96,9 @@ class PlaybackManager(EventManager):
         root_octave = None
 
         for measure_number, measure in enumerate(measures['measures']):
+            if measure_limit is not None and measure_number > measure_limit:
+                break
+        
             voices = list(measure.keys())
             voice_to_note_numbers = {}
 
@@ -122,11 +129,11 @@ class PlaybackManager(EventManager):
             # Now, concatenate each voice into one file
             for voice, num_notes in voice_to_note_numbers.items():
                 files = [measure_voice_note_wav_file_format.format(processing_dir, measure_number, voice, n) for n in range(0, num_notes)]
-                command = ["sox"]
-                [command.append(f) for f in files]
+                command = self._concatenate_wav_inputs(files)
                 command.append(measure_voice_wav_file_format.format(processing_dir, measure_number, voice))
 
-                sp.Popen(command)
+                p = sp.Popen(command)
+                p.communicate()
 
             measure_voice_files = [measure_voice_wav_file_format.format(processing_dir, measure_number, v) for v in list(voice_to_note_numbers.keys())]
 
@@ -136,16 +143,41 @@ class PlaybackManager(EventManager):
                 amix_command.append(mvf)
             amix_command.append("-y")
             amix_command.append("-filter_complex")
-            amix_command.append("amix=inputs={0}:duration=longest".format(len(measure_voice_files)))
+            
+            # Normalise downmixed audio; when downmixing, volume of each input is set to 1/N where N is number of inputs, so increase volume of each by N
+            # amix_command.append("amix=inputs={0}:duration=longest,volume={1}".format(len(measure_voice_files), len(measure_voice_files)))
+            # amix_command.append("amix=inputs={0}:duration=longest".format(len(measure_voice_files)))
+            amix_command.append("amix=inputs={0}:duration=longest:dropout_transition=0,dynaudnorm,volume={1}".format(len(measure_voice_files), math.ceil(len(measure_voice_files) / 2)))
+            # amix_command.append("amix=inputs={0}:duration=longest:dropout_transition=0,dynaudnorm".format(len(measure_voice_files)))
 
             measure_file = measure_wav_file_format.format(processing_dir, measure_number)
             amix_command.append(measure_file)
-            sp.Popen(amix_command)
+            
+            p = sp.Popen(amix_command)
+            p.communicate()
+
+            # p = sp.Popen(["ffmpeg-normalize", measure_file, "-o", measure_file, "-f" ])
             measure_files.append(measure_file)
 
-        for mf in measure_files:
-            pcm = self._transform_audio(mf, self.RESAMPLE_FILTER, 1, 1, 1, desired_output='pcm')
-            self.mumble.sound_output.add_sound(pcm)
+        command = self._concatenate_wav_inputs(measure_files)
+        command.append(output_file)
+
+        p = sp.Popen(command)
+        p.communicate()
+
+        # p = sp.Popen(["ffmpeg-normalize", output_file, "-o", output_file, "-f" ])
+        # p.communicate()
+
+        print("done")
+
+        pcm = self._transform_audio(output_file, self.RESAMPLE_FILTER, volume, 1, 1, desired_output='pcm')
+        self.mumble.sound_output.add_sound(pcm)
+
+    @staticmethod
+    def _concatenate_wav_inputs(files):
+        command = ["sox"]
+        [command.append(f) for f in files]
+        return command
 
     def _transform_audio(self, file, pitch_filter, volume, speed, shift, desired_output='pcm', output_file=None):
         filter = self._generate_filter(pitch_filter, volume, speed, shift)
@@ -218,14 +250,23 @@ class TextMessageManager(EventManager):
 
     def dispatch(self, event):
         if isinstance(event, ChannelTextEvent):
-            if self.channel_wrapper is None:
-                self.channel_wrapper = self.mumble_wrapper.get_channel(
-                    event.channel_name
-                )
+            self._set_channel_wrapper(event.channel_name)
             self.channel_wrapper.send(event.data)
 
         elif isinstance(event, UserTextEvent):
             event.user.send_text_message(event.data)
+
+        elif isinstance(event, ListMusicEvent):
+            songs = [s.split(".")[0] for s in os.listdir("audio/music")]
+            songs.sort()
+            
+            self._set_channel_wrapper()
+            self.channel_wrapper.send("The following songs are available: <br>" + ",<br>".join(songs))
+
+    def _set_channel_wrapper(self, channel_name=os.getenv(ROOT_CHANNEL)):
+        if self.channel_wrapper is None:
+            self.channel_wrapper = self.mumble_wrapper.get_channel(channel_name)
+
 
 
 class RecordingManager(EventManager):

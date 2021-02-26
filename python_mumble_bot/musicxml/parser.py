@@ -15,6 +15,8 @@ def parse_musicxml(path_to_musicxml):
     current_notes = []
     measure_length = None
 
+    repeat_start_measure = None
+
     for measure in raw_measures:
         voices_to_notes = {}
 
@@ -25,10 +27,10 @@ def parse_musicxml(path_to_musicxml):
         notes = [n for n in measure.iterfind('note')]
 
         current_voice = None
-        previousNote = None
+        previous_note = None
         chord_dummy_voice = 100
         current_time = 0
-        for note in notes:
+        for note_number, note in enumerate(notes):
             voice = int(note.find('voice').text)
 
             if current_voice is None:
@@ -47,11 +49,12 @@ def parse_musicxml(path_to_musicxml):
 
                 if current_notes != []:
                     current_notes[-1].duration += rest_duration
-                else:
-                    pass # rest is first note in the bar. handle later.
                     
             else:
                 note_name = pitch.find('step').text
+
+                if note.find('grace') is not None:
+                    continue
 
                 if pitch.find('alter') is None:
                     alter = 0
@@ -70,7 +73,22 @@ def parse_musicxml(path_to_musicxml):
 
         if current_notes != []:
             voices_to_notes[current_voice] = current_notes
-            measures.append(voices_to_notes)
+        
+        measures.append(voices_to_notes)
+
+        # if measure.find('barline') is not None:
+        #     # Maybe there's a repeat!
+        #     repeat = measure.find('barline').find('repeat')
+        #     if repeat is not None:
+        #         if repeat.attrib['direction'] == 'forward':
+        #             repeat_start_measure = measure_number
+        #         else:
+        #             # at the end of the repeat
+        #             num_measures = measure_number - repeat_start_measure + 1
+        #             [measures.append(m) for m in measures[len(measures) - num_measures: len(measures)]]
+        #             repeat_start_measure = None
+
+
 
     if measure_length is None:
         # Assume this is 4/4
