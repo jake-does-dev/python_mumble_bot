@@ -65,7 +65,7 @@ class PlaybackManager(EventManager):
             file = self.state_manager.find_audio_clip(ref)
             pcm = self._transform_audio(file, pitch_filter, self.state_manager.get_volume(), float(speed[:-1]), float(shift[:-1]), desired_output='pcm')
 
-            self.mumble.sound_output.set_audio_per_packet(0.001)
+            # self.mumble.sound_output.set_audio_per_packet(0.001)
             self.mumble.sound_output.add_sound(pcm)
             
     def _play_music(self, event):
@@ -111,18 +111,26 @@ class PlaybackManager(EventManager):
 
                 for note_number, note in enumerate(notes):
                     octave = note.octave
-                    if root_octave is None:
-                        root_octave = octave
-
-                    octave_shift = octave - root_octave
-                    octave_semitone_shift = 12 * octave_shift
-
                     alter = note.alter
-                    pitch = root_pitch + self.NOTES_TO_SEMITONES[note.note_name] + octave_semitone_shift + note.alter
+                    note_name = note.note_name
                     speed = base_speed * (measure_duration / note.duration) / 10
+
+                    if note_name == 'rest':
+                        pitch = 0
+                        note_volume = 0
+                    
+                    else:
+                        if root_octave is None:
+                            root_octave = octave
+
+                        octave_shift = octave - root_octave
+                        octave_semitone_shift = 12 * octave_shift
+
+                        pitch = root_pitch + self.NOTES_TO_SEMITONES[note_name] + octave_semitone_shift + note.alter
+                        note_volume = self.state_manager.get_volume()
                     
                     file_name = measure_voice_note_wav_file_format.format(processing_dir, measure_number, voice, note_number)
-                    self._transform_audio(file, self.SETRATE_FILTER, self.state_manager.get_volume(), speed, pitch, desired_output='wav', output_file=file_name)
+                    self._transform_audio(file, self.SETRATE_FILTER, note_volume, speed, pitch, desired_output='wav', output_file=file_name)
 
                 voice_to_note_numbers[voice] = len(notes)
 
@@ -132,7 +140,7 @@ class PlaybackManager(EventManager):
                 command = self._concatenate_wav_inputs(files)
                 command.append(measure_voice_wav_file_format.format(processing_dir, measure_number, voice))
 
-                p = sp.Popen(command)
+                p = sp.Popen(command, stderr=sp.DEVNULL)
                 p.communicate()
 
             measure_voice_files = [measure_voice_wav_file_format.format(processing_dir, measure_number, v) for v in list(voice_to_note_numbers.keys())]
@@ -153,7 +161,7 @@ class PlaybackManager(EventManager):
             measure_file = measure_wav_file_format.format(processing_dir, measure_number)
             amix_command.append(measure_file)
             
-            p = sp.Popen(amix_command)
+            p = sp.Popen(amix_command, stderr=sp.DEVNULL)
             p.communicate()
 
             # p = sp.Popen(["ffmpeg-normalize", measure_file, "-o", measure_file, "-f" ])
@@ -162,11 +170,17 @@ class PlaybackManager(EventManager):
         command = self._concatenate_wav_inputs(measure_files)
         command.append(output_file)
 
-        p = sp.Popen(command)
+        p = sp.Popen(command, stderr=sp.DEVNULL)
         p.communicate()
 
-        # p = sp.Popen(["ffmpeg-normalize", output_file, "-o", output_file, "-f" ])
-        # p.communicate()
+        final_file_name = "final.wav"
+        parts = output_file.split("/")
+        parts[-1] = final_file_name
+        final_file = "/".join(parts)
+
+        command = ["ffmpeg", "-i", output_file, "-af", "loudnorm=I=-24:LRA=11:TP=-1.5", final_file, "-y"]
+        p = sp.Popen(command)
+        p.communicate()
 
         print("done")
 

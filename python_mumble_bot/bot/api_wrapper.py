@@ -44,7 +44,7 @@ class MumbleWrapper:
         self.mumble.users.myself.unrecording()
 
     def set_receive_sound(self, option):
-        self.mumble.set_receive_sound(option)
+        self.mumble.receive_sound = option
 
     def is_alive(self):
         return self.mumble.is_alive()

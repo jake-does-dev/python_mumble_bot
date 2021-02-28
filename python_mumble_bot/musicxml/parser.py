@@ -49,6 +49,10 @@ def parse_musicxml(path_to_musicxml):
 
                 if current_notes != []:
                     current_notes[-1].duration += rest_duration
+                else:
+                    start_time = current_time
+                    current_time += rest_duration
+                    current_notes.append(Note('rest', 0, 0, start_time, rest_duration))
                     
             else:
                 note_name = pitch.find('step').text
