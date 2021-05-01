@@ -23,7 +23,7 @@ def connect():
     mumble = pymumble.Mumble(
         os.getenv(MUMBLE_HOSTNAME),
         os.getenv(MUMBLE_USERNAME),
-        os.getenv(MUMBLE_PASSWORD),
+        password=os.getenv(MUMBLE_PASSWORD),
     )
     mumble.set_receive_sound = False
 
