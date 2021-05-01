@@ -1,4 +1,5 @@
 import os
+import time
 import pymumble_py3 as pymumble
 
 from python_mumble_bot.bot.api_wrapper import MumbleWrapper
@@ -18,7 +19,6 @@ def connect():
         os.getenv("MUMBLE_SERVER_HOST"),
         os.getenv("MUMBLE_SERVER_USERNAME"),
         password=os.getenv("MUMBLE_SERVER_PASSWORD")
-        # debug=True
     )
     mumble.set_receive_sound = False
 
@@ -103,6 +103,9 @@ class Client:
         while self.mumble.is_alive():
             for manager in self.managers.values():
                 manager.loop()
+
+            # allow available callbacks to jump into the tight loop
+            time.sleep(0.5)
 
 
 if __name__ == "__main__":
