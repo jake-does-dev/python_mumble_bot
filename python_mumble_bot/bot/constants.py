@@ -17,7 +17,7 @@ MUMBLE_USERNAME = "MUMBLE_SERVER_USERNAME"
 MUMBLE_PASSWORD = "MUMBLE_SERVER_PASSWORD"
 VALID_AUDIO_FORMATS = [".wav", ".mp3"]
 BITRATE = 48000
-DEFAULT_RECORDING_DIR = "/home/winneh/mumble-recordings/"
+DEFAULT_RECORDING_DIR = "~/mumble-recordings/"
 
 ID = "_id"
 IDENTIFIER = "identifier"
