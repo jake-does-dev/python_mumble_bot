@@ -1,10 +1,15 @@
 import os
 import time
+
 import pymumble_py3 as pymumble
 
 from python_mumble_bot.bot.api_wrapper import MumbleWrapper
 from python_mumble_bot.bot.command import CommandResolver, RefreshCommand
-from python_mumble_bot.bot.constants import HOSTNAME, PASSWORD
+from python_mumble_bot.bot.constants import (
+    MUMBLE_HOSTNAME,
+    MUMBLE_PASSWORD,
+    MUMBLE_USERNAME,
+)
 from python_mumble_bot.bot.manager import (
     PlaybackManager,
     RecordingManager,
@@ -16,9 +21,9 @@ from python_mumble_bot.db.mongodb import MongoInterface
 
 def connect():
     mumble = pymumble.Mumble(
-        os.getenv("MUMBLE_SERVER_HOST"),
-        os.getenv("MUMBLE_SERVER_USERNAME"),
-        password=os.getenv("MUMBLE_SERVER_PASSWORD")
+        os.getenv(MUMBLE_HOSTNAME),
+        os.getenv(MUMBLE_USERNAME),
+        password=os.getenv(MUMBLE_PASSWORD),
     )
     mumble.set_receive_sound = False
 

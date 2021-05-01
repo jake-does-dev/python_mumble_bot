@@ -11,24 +11,26 @@ from python_mumble_bot.bot.constants import (
     ID,
     IDENTIFIER,
     IDENTIFIER_PREFIX,
+    MONGODB_HOST,
+    MONGODB_PASSWORD,
+    MONGODB_USERNAME,
     NAME,
     NEXT_ID,
     TAGS,
-    MONGODB_HOST,
-    MONGODB_USERNAME,
-    MONGODB_PASSWORD,
 )
 
 
 class MongoInterface:
     CONNECTION_STRING = "".join(
-        ["mongodb://",
-         os.getenv(MONGODB_USERNAME),
-         ":",
-         os.getenv(MONGODB_PASSWORD),
-         "@",
-         os.getenv(MONGODB_HOST),
-         ":27017/voice_clips"]
+        [
+            "mongodb://",
+            os.getenv(MONGODB_USERNAME),
+            ":",
+            os.getenv(MONGODB_PASSWORD),
+            "@",
+            os.getenv(MONGODB_HOST),
+            ":27017/voice_clips",
+        ]
     )
 
     NEW_CLIPS_PATH = Path("audio/new/")
@@ -71,8 +73,7 @@ class MongoInterface:
     def set_volume(self, volume):
         self.volume = volume
         self.client.voice_clips.playback_volume.update_one(
-            {},
-            {"$set": {"playback_volume": volume}}
+            {}, {"$set": {"playback_volume": volume}}
         )
 
     def get_volume(self):

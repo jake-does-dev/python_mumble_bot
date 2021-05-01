@@ -10,4 +10,3 @@ class Note:
         return "Note['note_name': {0}, 'alter': {1}, 'octave': {2}, 'start_time': {3}, 'duration': {4}]".format(
             self.note_name, self.alter, self.octave, self.start_time, self.duration
         )
-    

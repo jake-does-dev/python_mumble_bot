@@ -7,9 +7,9 @@ from python_mumble_bot.bot.event import (
     AudioEvent,
     ChannelTextEvent,
     ListMusicEvent,
+    MusicEvent,
     RecordEvent,
     UserTextEvent,
-    MusicEvent,
 )
 
 
@@ -89,10 +89,13 @@ class ListCommand(RefreshCommand):
     @staticmethod
     def help():
         return "<br>".join(
-            ["Example call: /pmb list",
-            "This shows all available clips",
-            "Example call: /pmb list chicken",
-            "This shows all available clips with tag chicken"])
+            [
+                "Example call: /pmb list",
+                "This shows all available clips",
+                "Example call: /pmb list chicken",
+                "This shows all available clips with tag chicken",
+            ]
+        )
 
     def generate_events(self, mongo_interface, user):
         clips = sorted(
@@ -154,8 +157,8 @@ class DotaCommand(Command):
     @staticmethod
     def help():
         return "<br>".join(
-            ["Example call: /pmb dota",
-            "This chooses which Dota game mode to play"])
+            ["Example call: /pmb dota", "This chooses which Dota game mode to play"]
+        )
 
 
 class RandomCommand(Command):
@@ -165,10 +168,13 @@ class RandomCommand(Command):
     @staticmethod
     def help():
         return "<br>".join(
-            ["Example call: /pmb random 10",
-            "This plays 10 random clips",
-            "Example call: /pmb random 10 @minSpeed 0.5x @maxSpeed 2x @pitchDownLimit -6s @pitchUpLimit 6s @clips oy17,oy77",
-            "This plays 10 random clips, with a min speed of 0.5x, max speed of 2x, within the pitch range of 6 semitones below and 6 semitones above, choosing from the clips oy17 and oy77. All modifiers are optional"])
+            [
+                "Example call: /pmb random 10",
+                "This plays 10 random clips",
+                "Example call: /pmb random 10 @minSpeed 0.5x @maxSpeed 2x @pitchDownLimit -6s @pitchUpLimit 6s @clips oy17,oy77",
+                "This plays 10 random clips, with a min speed of 0.5x, max speed of 2x, within the pitch range of 6 semitones below and 6 semitones above, choosing from the clips oy17 and oy77. All modifiers are optional",
+            ]
+        )
 
     def generate_events(self, mongo_interface, user):
         parser = argparse.ArgumentParser(prefix_chars="@")
@@ -209,10 +215,14 @@ class RandomCommand(Command):
             for i in range(0, int(num_requested)):
                 chosen.append(random.choice(clips))
 
-                speed = round(random.uniform(float(min_speed[:-1]), float(max_speed[:-1])), 2)
+                speed = round(
+                    random.uniform(float(min_speed[:-1]), float(max_speed[:-1])), 2
+                )
                 speeds.append("".join([str(speed), "x"]))
 
-                pitch_shift = random.randint(int(pitch_down_limit[:-1]), int(pitch_up_limit[:-1]))
+                pitch_shift = random.randint(
+                    int(pitch_down_limit[:-1]), int(pitch_up_limit[:-1])
+                )
                 semitone_shifts.append("".join([str(pitch_shift), "s"]))
 
             command = ["To repeat this random selection:", "/pmb"]
@@ -230,9 +240,24 @@ class RandomCommand(Command):
                 ]
             )
 
-        print("".join(["files:{", str(chosen), "}\nspeeds:{", str(speeds), "}\nshifts:{", str(semitone_shifts), "}"]))
+        print(
+            "".join(
+                [
+                    "files:{",
+                    str(chosen),
+                    "}\nspeeds:{",
+                    str(speeds),
+                    "}\nshifts:{",
+                    str(semitone_shifts),
+                    "}",
+                ]
+            )
+        )
 
-        return [UserTextEvent(text_output, user), AudioEvent(chosen, speeds, semitone_shifts)]
+        return [
+            UserTextEvent(text_output, user),
+            AudioEvent(chosen, speeds, semitone_shifts),
+        ]
 
 
 class RecordCommand(Command):
@@ -242,16 +267,20 @@ class RecordCommand(Command):
     @staticmethod
     def help():
         return "<br>".join(
-            ["Example call: /pmb record [start|stop]",
-             "Starts/stops recording voice data from all users"])
+            [
+                "Example call: /pmb record [start|stop]",
+                "Starts/stops recording voice data from all users",
+            ]
+        )
 
     def generate_events(self, mongo_interface, user):
         return [RecordEvent(self.data)]
 
+
 class MusicCommand(Command):
     def __init__(self, data):
         super().__init__(data)
-    
+
     def generate_events(self, mongo_interface, user):
         parser = argparse.ArgumentParser(prefix_chars="@")
         parser.add_argument("@list", action="store_true")
@@ -267,14 +296,14 @@ class MusicCommand(Command):
         if args.list:
             # List clips
             return [ListMusicEvent(None)]
-        
+
         else:
             song = None
             if args.song is None:
                 return [ChannelTextEvent("No song specified!")]
             else:
                 song = args.song
-            
+
             clip = None
             if args.clip is None:
                 return [ChannelTextEvent("No clip specified!")]
@@ -291,14 +320,20 @@ class MusicCommand(Command):
     @staticmethod
     def help():
         return "<br>".join(
-            ["Example call: /pmb music @song god-save-the-queen @clip oy17 @speed 3x @pitch 3s @num_bars 16 @volume 1",
-             "Plays the @song god-save-the-queen using the @clip oy61, at an increased @speed of 3x and a root pitch of @3s above the pitch of @clip, for @num_bars bars, at a volume of @volume ",
-             "For all available songs, type /pmb music @list"])
+            [
+                "Example call: /pmb music @song god-save-the-queen @clip oy17 @speed 3x @pitch 3s @num_bars 16 @volume 1",
+                "Plays the @song god-save-the-queen using the @clip oy61, at an increased @speed of 3x and a root pitch of @3s above the pitch of @clip, for @num_bars bars, at a volume of @volume ",
+                "For all available songs, type /pmb music @list",
+            ]
+        )
+
 
 class PlayCommand(Command):
     def __init__(self, data):
         forward_filled_speeds = self.do_forward_fill(data, self.is_speed, "1x")
-        forward_filled_semitone_shifts = self.do_forward_fill(data, self.is_semitone_shift, "0s")
+        forward_filled_semitone_shifts = self.do_forward_fill(
+            data, self.is_semitone_shift, "0s"
+        )
 
         files = []
         speeds = []
@@ -311,13 +346,13 @@ class PlayCommand(Command):
             shift = forward_filled_semitone_shifts[i]
 
             if self.is_riser(incoming):
-                print("startShift" + data[i+1])
-                print("endShift" + data[i+2])
-                print("clipShift" + data[i+3])
+                print("startShift" + data[i + 1])
+                print("endShift" + data[i + 2])
+                print("clipShift" + data[i + 3])
 
-                startShift = int(data[i+1][:-1])
-                endShift = int(data[i+2][:-1])
-                clip = data[i+3]
+                startShift = int(data[i + 1][:-1])
+                endShift = int(data[i + 2][:-1])
+                clip = data[i + 3]
 
                 for s in range(startShift, endShift):
                     files.append(clip)
@@ -325,7 +360,7 @@ class PlayCommand(Command):
                     shifts.append("".join([str(s), "s"]))
 
                 i += 3
-  
+
             elif not self.is_speed(incoming) and not self.is_semitone_shift(incoming):
                 files.append(incoming)
                 speeds.append(speed)
@@ -339,19 +374,32 @@ class PlayCommand(Command):
         self.playback_speeds = speeds
         self.semitone_shifts = shifts
 
-        print("".join(["files:{", str(self.data), "}\nspeeds:{", str(self.playback_speeds), "}\nshifts:{", str(self.semitone_shifts), "}"]))
+        print(
+            "".join(
+                [
+                    "files:{",
+                    str(self.data),
+                    "}\nspeeds:{",
+                    str(self.playback_speeds),
+                    "}\nshifts:{",
+                    str(self.semitone_shifts),
+                    "}",
+                ]
+            )
+        )
 
     @staticmethod
     def help():
         return "<br>".join(
-            ["Example call: /pp oy17",
-            "Plays the clip with id oy17",
-            "Example call: /pp ollie_raspberry",
-            "Plays the clip with name ollie_raspberry",
-            "Example call: /pp 2x 3s oy17",
-            "Plays the clip oy17 at 2x speed, at 3 semitones pitch shifted up. If speeds and pitch shifts are ignored, then the defaults of 1x and 0s are used.",
-            ])
-
+            [
+                "Example call: /pp oy17",
+                "Plays the clip with id oy17",
+                "Example call: /pp ollie_raspberry",
+                "Plays the clip with name ollie_raspberry",
+                "Example call: /pp 2x 3s oy17",
+                "Plays the clip oy17 at 2x speed, at 3 semitones pitch shifted up. If speeds and pitch shifts are ignored, then the defaults of 1x and 0s are used.",
+            ]
+        )
 
     def generate_events(self, mongo_interface, user):
         return [AudioEvent(self.data, self.playback_speeds, self.semitone_shifts)]
@@ -392,8 +440,11 @@ class AbstractTagCommand(Command):
     @staticmethod
     def help():
         return "<br>".join(
-            ["Example call: /pmb tag chicken oy45",
-            "This tags the clip oy45 with the tag chicken. See /pmb list [tag] for further use"])
+            [
+                "Example call: /pmb tag chicken oy45",
+                "This tags the clip oy45 with the tag chicken. See /pmb list [tag] for further use",
+            ]
+        )
 
     def generate_events(self, mongo_interface, user):
         if isinstance(self, TagCommand):
@@ -475,21 +526,25 @@ class VolumeCommand(Command):
     @staticmethod
     def help():
         return "<br>".join(
-            ["Example: /pmb volume 0.5",
-            "Plays all clips at half their original volume."]
+            [
+                "Example: /pmb volume 0.5",
+                "Plays all clips at half their original volume.",
+            ]
         )
 
     def generate_events(self, mongo_interface, user):
         volume = float(self.data)
 
         mongo_interface.set_volume(volume)
-        return [ChannelTextEvent("".join(["The bot's volume has been set to: ", self.data]))]
+        return [
+            ChannelTextEvent("".join(["The bot's volume has been set to: ", self.data]))
+        ]
 
 
 class HelpCommand(Command):
     def __init__(self, data):
         super().__init__(data)
-    
+
     def generate_events(self, mongo_interface, user):
         subclasses = Command.__subclasses__()
 
@@ -498,6 +553,3 @@ class HelpCommand(Command):
         print(text)
         # return [UserTextEvent(text, user)]
         return [UserTextEvent(text, user)]
-
-
-
