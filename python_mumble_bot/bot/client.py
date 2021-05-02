@@ -9,6 +9,8 @@ from python_mumble_bot.bot.constants import (
     MUMBLE_HOSTNAME,
     MUMBLE_PASSWORD,
     MUMBLE_USERNAME,
+    USER_GREETINGS_DICT,
+    USERNAME_DICT,
 )
 from python_mumble_bot.bot.manager import (
     PlaybackManager,
@@ -28,12 +30,12 @@ def connect():
     mumble.set_receive_sound = False
 
     client = Client(mumble)
-    client.set_callbacks()
     client.start()
+    client.set_callbacks()
+    client.loop()
 
     return client
-
-
+    
 class Client:
     STATE_MANAGER = "STATE_MANAGER"
     PLAYBACK_MANAGER = "PLAYBACK_MANAGER"
@@ -84,6 +86,16 @@ class Client:
             self.interpret_command,
         )
 
+        self.mumble.callbacks.set_callback(
+            pymumble.constants.PYMUMBLE_CLBK_USERUPDATED,
+            self.user_updated_command,
+        )
+
+        self.mumble.callbacks.set_callback(
+            pymumble.constants.PYMUMBLE_CLBK_USERCREATED,
+            self.user_created_command,
+        )
+
     def interpret_command(self, incoming):
         command = self.command_resolver.resolve(incoming)
 
@@ -98,11 +110,29 @@ class Client:
             for manager in self.managers.values():
                 manager.process(event)
 
+    def user_updated_command(self, user_event, _unused_arg):
+        if user_event.get('name') == 'Winneh' and self.mumble.my_channel()['channel_id'] == user_event.get('channel_id'):
+            self._send_delayed_greeting(user_event.get('name'))
+
+    def user_created_command(self, user_event):
+        if user_event.get('name') == 'Winneh':
+            self._send_delayed_greeting(user_event.get('name'))
+
+    def _send_delayed_greeting(self, user):
+        class Greeting:
+            def __init__(self, actor, message):
+                self.actor = actor
+                self.message = message
+
+        time.sleep(5)
+        greetings = USER_GREETINGS_DICT[USERNAME_DICT[user]]
+        for greeting in greetings:
+            self.interpret_command(Greeting(user, '/pmb play {0}'.format(greeting)))
+
     def start(self):
         self.mumble.start()
         self.mumble.is_ready()
         self.managers[self.STATE_MANAGER].refresh_state()
-        self.loop()
 
     def loop(self):
         while self.mumble.is_alive():
@@ -110,7 +140,7 @@ class Client:
                 manager.loop()
 
             # allow available callbacks to jump into the tight loop
-            time.sleep(0.5)
+            time.sleep(0.1)
 
 
 if __name__ == "__main__":

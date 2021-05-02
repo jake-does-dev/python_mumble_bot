@@ -180,13 +180,13 @@ class PlaybackManager(EventManager):
             amix_command.append("-filter_complex")
 
             # Normalise downmixed audio; when downmixing, volume of each input is set to 1/N where N is number of inputs, so increase volume of each by N
-            # amix_command.append("amix=inputs={0}:duration=longest,volume={1}".format(len(measure_voice_files), len(measure_voice_files)))
+            amix_command.append("amix=inputs={0}:duration=longest,volume={1}".format(len(measure_voice_files), len(measure_voice_files)))
             # amix_command.append("amix=inputs={0}:duration=longest".format(len(measure_voice_files)))
-            amix_command.append(
-                "amix=inputs={0}:duration=longest:dropout_transition=0,dynaudnorm,volume={1}".format(
-                    len(measure_voice_files), math.ceil(len(measure_voice_files) / 2)
-                )
-            )
+            # amix_command.append(
+            #     "amix=inputs={0}:duration=longest:dropout_transition=0,dynaudnorm,volume={1}".format(
+            #         len(measure_voice_files), math.ceil(len(measure_voice_files) / 2)
+            #     )
+            # )
             # amix_command.append("amix=inputs={0}:duration=longest:dropout_transition=0,dynaudnorm".format(len(measure_voice_files)))
 
             measure_file = measure_wav_file_format.format(
