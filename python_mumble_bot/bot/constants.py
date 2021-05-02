@@ -34,3 +34,25 @@ DATE_FORMAT = "%Y-%m-%d %H:%M:%S"
 MONGODB_HOST = "MONGODB_HOST"
 MONGODB_USERNAME = "MONGODB_USERNAME"
 MONGODB_PASSWORD = "MONGODB_PASSWORD"
+
+USER_GREETINGS_DICT = {
+    'dan': ['bot_hello_dan', 'da6'],
+    'daryl': ['bot_hello_daryl'],
+    'dom': ['bot_hello_dom', '34'],
+    'jake': ['bot_hello_jake', 'ja84'],
+    'matt_r': ['bot_hello_matt', 'mr2'],
+    'matt_t': ['bot_hello_matt', 'mt1'],
+    'ollie': ['bot_hello_ollie', 'oy77'],
+    'steve': ['bot_hello_steve'],
+}
+
+USERNAME_DICT = {
+    'Dan': 'dan',
+    'NewUserWhoDis': 'daryl',
+    'MyPigIsOnFire': 'dom',
+    'Winneh': 'jake',
+    'Matt': 'matt_r',
+    'CosmicPineapple': 'matt_t',
+    'Olyol95': 'ollie',
+    'Stevo': 'steve',
+}   
