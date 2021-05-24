@@ -426,11 +426,11 @@ class PlayCommand(Command):
 
     @staticmethod
     def is_speed(speed):
-        return speed.endswith("x")
+        return speed.endswith("x") and len(speed) >= 2
 
     @staticmethod
     def is_semitone_shift(semitone_shift):
-        return semitone_shift.endswith("s")
+        return semitone_shift.endswith("s") and len(semitone_shift) >= 2
 
 
 class AbstractTagCommand(Command):

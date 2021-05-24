@@ -32,6 +32,9 @@ def connect():
     client = Client(mumble)
     client.start()
     client.set_callbacks()
+
+    client.interpret_command(Greeting(os.getenv(MUMBLE_USERNAME), '/pmb play beep_boop'))
+
     client.loop()
 
     return client
@@ -96,6 +99,11 @@ class Client:
             self.user_created_command,
         )
 
+        # self.mumble.callbacks.set_callback(
+        #     pymumble.constants.PYMUMBLE_CLBK_SOUNDRECEIVED,
+        #     self.sound_received_command
+        # )
+
     def interpret_command(self, incoming):
         command = self.command_resolver.resolve(incoming)
 
@@ -110,24 +118,18 @@ class Client:
             for manager in self.managers.values():
                 manager.process(event)
 
-    def user_updated_command(self, user_event, _unused_arg):
-        if user_event.get('name') == 'Winneh' and self.mumble.my_channel()['channel_id'] == user_event.get('channel_id'):
+    def user_updated_command(self, user_event, incoming):
+        if {'actor', 'channel_id'} == incoming.keys() and self.mumble.my_channel()['channel_id'] == user_event.get('channel_id'):
             self._send_delayed_greeting(user_event.get('name'))
 
     def user_created_command(self, user_event):
-        if user_event.get('name') == 'Winneh':
-            self._send_delayed_greeting(user_event.get('name'))
+        self._send_delayed_greeting(user_event.get('name'))
 
     def _send_delayed_greeting(self, user):
-        class Greeting:
-            def __init__(self, actor, message):
-                self.actor = actor
-                self.message = message
-
-        time.sleep(5)
-        greetings = USER_GREETINGS_DICT[USERNAME_DICT[user]]
-        for greeting in greetings:
-            self.interpret_command(Greeting(user, '/pmb play {0}'.format(greeting)))
+        if user in USERNAME_DICT.keys():
+            greetings = USER_GREETINGS_DICT[USERNAME_DICT[user]]
+            for greeting in greetings:
+                self.interpret_command(Greeting(user, '/pmb play {0}'.format(greeting)))
 
     def start(self):
         self.mumble.start()
@@ -142,6 +144,10 @@ class Client:
             # allow available callbacks to jump into the tight loop
             time.sleep(0.1)
 
+class Greeting:
+    def __init__(self, actor, message):
+        self.actor = actor
+        self.message = message
 
 if __name__ == "__main__":
     connect()

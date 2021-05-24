@@ -359,7 +359,11 @@ class RecordingManager(EventManager):
         now = dt.datetime.now()
         date_format = "%Y%m%d%H%M%S"
 
-        for user_wrapper in self.mumble_wrapper.get_users():
+        self.is_recording = True
+        self.mumble_wrapper.set_receive_sound(True)
+        self.mumble_wrapper.start_recording()
+
+        for user_wrapper in self.mumble_wrapper.get_users():            
             user_name = user_wrapper.get_name()
 
             file_name = "".join(
@@ -370,10 +374,6 @@ class RecordingManager(EventManager):
             file = wave.open(path.as_posix(), "wb")
             file.setparams((1, 2, BITRATE, 0, "NONE", "not compressed"))
             self.files[user_name] = file
-
-        self.is_recording = True
-        self.mumble_wrapper.set_receive_sound(True)
-        self.mumble_wrapper.start_recording()
 
     def _stop_recording(self):
         self.mumble_wrapper.stop_recording()

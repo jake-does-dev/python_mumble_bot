@@ -17,7 +17,7 @@ MUMBLE_USERNAME = "MUMBLE_SERVER_USERNAME"
 MUMBLE_PASSWORD = "MUMBLE_SERVER_PASSWORD"
 VALID_AUDIO_FORMATS = [".wav", ".mp3"]
 BITRATE = 48000
-DEFAULT_RECORDING_DIR = "~/mumble-recordings/"
+DEFAULT_RECORDING_DIR = "/home/winneh/mumble-recordings/"
 
 ID = "_id"
 IDENTIFIER = "identifier"
@@ -38,11 +38,11 @@ MONGODB_PASSWORD = "MONGODB_PASSWORD"
 USER_GREETINGS_DICT = {
     'dan': ['bot_hello_dan', 'da6'],
     'daryl': ['bot_hello_daryl'],
-    'dom': ['bot_hello_dom', '34'],
+    'dom': ['bot_hello_dom', 'much_better_for_seeing_you_dom'],
     'jake': ['bot_hello_jake', 'ja84'],
     'matt_r': ['bot_hello_matt', 'mr2'],
     'matt_t': ['bot_hello_matt', 'mt1'],
-    'ollie': ['bot_hello_ollie', 'oy77'],
+    'ollie': ['bot_hello_ollie', 'oy17'],
     'steve': ['bot_hello_steve'],
 }
 
