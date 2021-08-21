@@ -1,6 +1,7 @@
 import argparse
 import os
 import random
+import math
 
 from python_mumble_bot.bot.constants import IDENTIFIER, NAME, ROOT_CHANNEL
 from python_mumble_bot.bot.event import (
@@ -535,10 +536,13 @@ class VolumeCommand(Command):
     def generate_events(self, mongo_interface, user):
         volume = float(self.data)
 
-        mongo_interface.set_volume(volume)
-        return [
-            ChannelTextEvent("".join(["The bot's volume has been set to: ", self.data]))
-        ]
+        if volume == math.inf or 0 < volume <= 5:    
+            mongo_interface.set_volume(volume)
+            return [
+                ChannelTextEvent("".join(["The bot's volume has been set to: ", self.data]))
+            ]
+        else:
+            return [ChannelTextEvent("You must choose a volume in (0, 5] ∪ Inf")]
 
 
 class HelpCommand(Command):

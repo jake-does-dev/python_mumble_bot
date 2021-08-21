@@ -84,5 +84,5 @@ mongo -u python_mumble_bot -p password X.X.X.X/voice_clips
 
 ## Adding new prefix
 mongo -u python_mumble_bot -p password 192.168.1.109:27017/voice_clips
-db.identifiers.insertOne({"file_prefix": "yog_", "identifier_prefix": "yog", "enabled": true, "next_id": 0})
-db.identifiers.update({"file_prefix": "yog_"}, {"$set": {"next_id": NumberInt(0)}})
+db.identifiers.insertOne({"file_prefix": "boris_", "identifier_prefix": "bj", "enabled": true, "next_id": 0})
+db.identifiers.update({"file_prefix": "boris_"}, {"$set": {"next_id": NumberInt(0)}})

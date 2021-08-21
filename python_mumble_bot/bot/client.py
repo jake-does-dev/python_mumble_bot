@@ -142,7 +142,7 @@ class Client:
                 manager.loop()
 
             # allow available callbacks to jump into the tight loop
-            time.sleep(0.1)
+            time.sleep(0.01)
 
 class Greeting:
     def __init__(self, actor, message):
