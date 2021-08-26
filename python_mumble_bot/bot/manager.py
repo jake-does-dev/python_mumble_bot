@@ -180,7 +180,11 @@ class PlaybackManager(EventManager):
             amix_command.append("-filter_complex")
 
             # Normalise downmixed audio; when downmixing, volume of each input is set to 1/N where N is number of inputs, so increase volume of each by N
-            amix_command.append("amix=inputs={0}:duration=longest,volume={1}".format(len(measure_voice_files), len(measure_voice_files)))
+            amix_command.append(
+                "amix=inputs={0}:duration=longest,volume={1}".format(
+                    len(measure_voice_files), len(measure_voice_files)
+                )
+            )
             # amix_command.append("amix=inputs={0}:duration=longest".format(len(measure_voice_files)))
             # amix_command.append(
             #     "amix=inputs={0}:duration=longest:dropout_transition=0,dynaudnorm,volume={1}".format(
@@ -363,7 +367,7 @@ class RecordingManager(EventManager):
         self.mumble_wrapper.set_receive_sound(True)
         self.mumble_wrapper.start_recording()
 
-        for user_wrapper in self.mumble_wrapper.get_users():            
+        for user_wrapper in self.mumble_wrapper.get_users():
             user_name = user_wrapper.get_name()
 
             file_name = "".join(
