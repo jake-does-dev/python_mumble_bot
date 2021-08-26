@@ -14,6 +14,7 @@ class UserWrapper:
     def get_sound(self):
         return self.user.sound.get_sound()
 
+
 class ChannelWrapper:
     def __init__(self, channel):
         self.channel = channel
@@ -45,6 +46,6 @@ class MumbleWrapper:
     def set_receive_sound(self, option):
         self.mumble.set_receive_sound = option
         self.mumble.receive_sound = option
-        
+
     def is_alive(self):
         return self.mumble.is_alive()

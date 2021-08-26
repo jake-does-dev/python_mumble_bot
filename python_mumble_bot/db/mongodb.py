@@ -23,6 +23,7 @@ from python_mumble_bot.bot.constants import (
 
 BASE_URL = "".join(["http://", os.getenv(MONGODB_HOST), ":5000"])
 
+
 class MongoInterface:
     NEW_CLIPS_PATH = Path("audio/new/")
     ALL_CLIPS_PATH = Path("audio/")

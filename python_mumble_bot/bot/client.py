@@ -33,12 +33,15 @@ def connect():
     client.start()
     client.set_callbacks()
 
-    client.interpret_command(Greeting(os.getenv(MUMBLE_USERNAME), '/pmb play beep_boop'))
+    client.interpret_command(
+        Greeting(os.getenv(MUMBLE_USERNAME), "/pmb play beep_boop")
+    )
 
     client.loop()
 
     return client
-    
+
+
 class Client:
     STATE_MANAGER = "STATE_MANAGER"
     PLAYBACK_MANAGER = "PLAYBACK_MANAGER"
@@ -119,17 +122,19 @@ class Client:
                 manager.process(event)
 
     def user_updated_command(self, user_event, incoming):
-        if {'actor', 'channel_id'} == incoming.keys() and self.mumble.my_channel()['channel_id'] == user_event.get('channel_id'):
-            self._send_delayed_greeting(user_event.get('name'))
+        if {"actor", "channel_id"} == incoming.keys() and self.mumble.my_channel()[
+            "channel_id"
+        ] == user_event.get("channel_id"):
+            self._send_delayed_greeting(user_event.get("name"))
 
     def user_created_command(self, user_event):
-        self._send_delayed_greeting(user_event.get('name'))
+        self._send_delayed_greeting(user_event.get("name"))
 
     def _send_delayed_greeting(self, user):
         if user in USERNAME_DICT.keys():
             greetings = USER_GREETINGS_DICT[USERNAME_DICT[user]]
             for greeting in greetings:
-                self.interpret_command(Greeting(user, '/pmb play {0}'.format(greeting)))
+                self.interpret_command(Greeting(user, "/pmb play {0}".format(greeting)))
 
     def start(self):
         self.mumble.start()
@@ -144,10 +149,12 @@ class Client:
             # allow available callbacks to jump into the tight loop
             time.sleep(0.01)
 
+
 class Greeting:
     def __init__(self, actor, message):
         self.actor = actor
         self.message = message
+
 
 if __name__ == "__main__":
     connect()

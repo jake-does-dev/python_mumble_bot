@@ -536,10 +536,12 @@ class VolumeCommand(Command):
     def generate_events(self, mongo_interface, user):
         volume = float(self.data)
 
-        if volume == math.inf or 0 < volume <= 5:    
+        if volume == math.inf or 0 < volume <= 5:
             mongo_interface.set_volume(volume)
             return [
-                ChannelTextEvent("".join(["The bot's volume has been set to: ", self.data]))
+                ChannelTextEvent(
+                    "".join(["The bot's volume has been set to: ", self.data])
+                )
             ]
         else:
             return [ChannelTextEvent("You must choose a volume in (0, 5] ∪ Inf")]
