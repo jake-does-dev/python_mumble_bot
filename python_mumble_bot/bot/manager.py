@@ -3,6 +3,9 @@ import math
 import os
 import subprocess as sp
 import wave
+import requests
+import base64
+
 from pathlib import Path
 
 from python_mumble_bot.bot.constants import BITRATE, DEFAULT_RECORDING_DIR, ROOT_CHANNEL
@@ -14,11 +17,13 @@ from python_mumble_bot.bot.event import (
     RecordEvent,
     TextEvent,
     UserTextEvent,
+    VocodeEvent,
 )
 from python_mumble_bot.musicxml.parser import parse_musicxml
 
 MUSIC_XML_DIR = Path("audio/music")
-
+VOCODE_API_URL = "https://mumble.stream/speak_spectrogram"
+VOCODE_API_HEADERS = {'Content-Type': 'application/json'}
 
 class EventManager:
     def process(self, event):
@@ -46,13 +51,25 @@ class PlaybackManager(EventManager):
         self.state_manager = state_manager
 
     def accept(self, event):
-        return isinstance(event, AudioEvent) or isinstance(event, MusicEvent)
+        return isinstance(event, AudioEvent) or isinstance(event, MusicEvent) or isinstance(event, VocodeEvent)
 
     def dispatch(self, event):
         if isinstance(event, AudioEvent):
             self._play_clips(event, self.RESAMPLE_FILTER)
+        elif isinstance(event, VocodeEvent):
+            self._process_vocode_event(event)
         elif isinstance(event, MusicEvent):
             self._play_music(event)
+
+    def _process_vocode(self, event):
+        data = '{"text": "{0}": "speaker","{1}"}'.format(event.words, event.speaker)
+        response = requests.post(VOCODE_API_URL, headers=VOCODE_API_HEADERS, data=data)
+
+        encoded_base64 = response.json()['audio_base64']
+        wav = base64.b64decode(encoded_base64)
+
+        pcm = self._transform_as_wav(wav, "", None)
+        self._play_sound(pcm)
 
     def _play_clips(self, event, pitch_filter):
         for ref, speed, shift in zip(
@@ -69,7 +86,7 @@ class PlaybackManager(EventManager):
             )
 
             # self.mumble.sound_output.set_audio_per_packet(0.001)
-            self.mumble.sound_output.add_sound(pcm)
+            self._play_sound(self, pcm)
 
     def _play_music(self, event):
         piece = "audio/music/{0}".format(event.piece)
@@ -228,6 +245,9 @@ class PlaybackManager(EventManager):
         pcm = self._transform_audio(
             output_file, self.RESAMPLE_FILTER, volume, 1, 1, desired_output="pcm"
         )
+        self._play_sound(pcm)
+
+    def _play_sound(self, pcm):
         self.mumble.sound_output.add_sound(pcm)
 
     @staticmethod

@@ -17,6 +17,10 @@ class AudioEvent(Event):
         self.playback_speeds = playback_speeds
         self.semitone_shifts = semitone_shifts
 
+class VocodeEvent(Event):
+    def __init__(self, speaker, words):
+        self.speaker = speaker
+        self.words = words
 
 class MusicEvent(Event):
     def __init__(self, data, piece, speed, root_pitch, measure_limit, volume):

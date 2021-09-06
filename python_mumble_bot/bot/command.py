@@ -11,6 +11,7 @@ from python_mumble_bot.bot.event import (
     MusicEvent,
     RecordEvent,
     UserTextEvent,
+    VocodeEvent,
 )
 
 
@@ -51,6 +52,8 @@ class CommandResolver:
                     commands = VolumeCommand(parts[2])
                 elif action == "music":
                     commands = MusicCommand(parts[2:])
+                elif action == "vocode":
+                    commands = VocodeCommand(parts[2:])
                 elif action == "help":
                     if len(parts) == 2:
                         commands = HelpCommand(None)
@@ -327,6 +330,17 @@ class MusicCommand(Command):
                 "For all available songs, type /pmb music @list",
             ]
         )
+
+
+class VocodeCommand(Command):
+    def __init__(self, data):
+        super().__init__(data)
+
+    def generate_events(self, mongo_interface, user):
+        speaker = self.data[0]
+        words = " ".join(self.data[1:])
+
+        return [VocodeEvent(speaker, words)]
 
 
 class PlayCommand(Command):

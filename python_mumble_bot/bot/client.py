@@ -99,11 +99,6 @@ class Client:
             self.user_created_command,
         )
 
-        # self.mumble.callbacks.set_callback(
-        #     pymumble.constants.PYMUMBLE_CLBK_SOUNDRECEIVED,
-        #     self.sound_received_command
-        # )
-
     def interpret_command(self, incoming):
         command = self.command_resolver.resolve(incoming)
 
