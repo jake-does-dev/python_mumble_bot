@@ -77,7 +77,7 @@ class PlaybackManager(EventManager):
         f.close()
 
         pcm = self._transform_as_pcm_data(
-            "/tmp/vocode.wav", "atempo=1.0,aresample=48000"
+            "/tmp/vocode.wav", "atempo=1.0,aresample=48000,volume={0}".join(self.state_manager.get_volume())
         )
 
         self._play_sound(pcm)
@@ -209,11 +209,7 @@ class PlaybackManager(EventManager):
             amix_command.append("-filter_complex")
 
             # Normalise downmixed audio; when downmixing, volume of each input is set to 1/N where N is number of inputs, so increase volume of each by N
-            amix_command.append(
-                "amix=inputs={0}:duration=longest,volume={1}".format(
-                    len(measure_voice_files), len(measure_voice_files)
-                )
-            )
+            amix_command.append("amix=inputs={0}:duration=longest,volume={1}".format(len(measure_voice_files), len(measure_voice_files)))
             # amix_command.append("amix=inputs={0}:duration=longest".format(len(measure_voice_files)))
             # amix_command.append(
             #     "amix=inputs={0}:duration=longest:dropout_transition=0,dynaudnorm,volume={1}".format(
@@ -256,6 +252,7 @@ class PlaybackManager(EventManager):
         p = sp.Popen(command)
         p.communicate()
 
+        print(command)
         print("done")
 
         pcm = self._transform_audio(
@@ -341,6 +338,7 @@ class PlaybackManager(EventManager):
             input, filter, output
         )
 
+
         p = sp.Popen(encode_command.split(" "))
         p.communicate()
 
@@ -399,7 +397,7 @@ class RecordingManager(EventManager):
         self.mumble_wrapper.set_receive_sound(True)
         self.mumble_wrapper.start_recording()
 
-        for user_wrapper in self.mumble_wrapper.get_users():
+        for user_wrapper in self.mumble_wrapper.get_users():            
             user_name = user_wrapper.get_name()
 
             file_name = "".join(
