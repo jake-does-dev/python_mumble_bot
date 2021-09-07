@@ -4,6 +4,8 @@ from pathlib import Path
 
 import pymongo
 
+import requests
+
 from python_mumble_bot.bot.constants import (
     CREATION_TIME,
     FILE,
@@ -18,6 +20,8 @@ from python_mumble_bot.bot.constants import (
     NEXT_ID,
     TAGS,
 )
+
+BASE_URL = "".join(["http://", os.getenv(MONGODB_HOST), ":5000"])
 
 
 class MongoInterface:
@@ -123,13 +127,19 @@ class MongoInterface:
         return identifier, name
 
     def get_clips(self, tag=None):
-        if self.clips_collection is None:
-            self.refresh()
+        url = "".join([BASE_URL, "/clips"])
+        response = requests.get(url=url)
+        data = response.json()
 
-        if tag is None:
-            return self.clips_collection.find({})
-        else:
-            return self.clips_collection.find({TAGS: tag})
+        return data["clips"]
+
+        # if self.clips_collection is None:
+        #     self.refresh()
+
+        # if tag is None:
+        #     return self.clips_collection.find({})
+        # else:
+        #     return self.clips_collection.find({TAGS: tag})
 
     def get_all_file_names(self):
         clips = self.get_clips()

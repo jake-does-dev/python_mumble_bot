@@ -11,6 +11,7 @@ pymumble = "==1.6.1"
 pymongo = "*"
 dnspython = "*"
 ffmpeg-normalize = "*"
+requests = "*"
 
 [dev-packages]
 black = "==20.8b1"

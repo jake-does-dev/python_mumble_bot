@@ -36,14 +36,14 @@ MONGODB_USERNAME = "MONGODB_USERNAME"
 MONGODB_PASSWORD = "MONGODB_PASSWORD"
 
 USER_GREETINGS_DICT = {
-    'dan': ['bot_hello_dan', 'da6'],
-    'david': ['bot_hello_david', '0.8x dg15'],
-    'dom': ['bot_hello_dom'],
-    'jake': ['bot_hello_jake', 'ja84'],
-    'matt_r': ['bot_hello_matt', 'mr2'],
-    'matt_t': ['bot_hello_matt', 'mt1'],
-    'ollie': ['bot_hello_ollie', 'oy17'],
-    'steve': ['bot_hello_steve'],
+    "dan": ["bot_hello_dan", "da6"],
+    "david": ["bot_hello_david", "0.8x dg15"],
+    "dom": ["bot_hello_dom"],
+    "jake": ["bot_hello_jake", "ja84"],
+    "matt_r": ["bot_hello_matt", "mr2"],
+    "matt_t": ["bot_hello_matt", "mt1"],
+    "ollie": ["bot_hello_ollie", "oy17"],
+    "steve": ["bot_hello_steve"],
 }
 
 USERNAME_DICT = {
