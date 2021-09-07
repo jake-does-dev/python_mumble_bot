@@ -63,6 +63,8 @@ class PlaybackManager(EventManager):
             self._play_music(event)
 
     def _process_vocode_event(self, event):
+        file = "/tmp/vocode.wav"
+
         data = json.dumps(
             {"text": event.words, "speaker": event.speaker}
         )
@@ -72,12 +74,17 @@ class PlaybackManager(EventManager):
         encoded_base64 = response.json()['audio_base64']
         wav = base64.b64decode(encoded_base64)
 
-        f = open("/tmp/vocode.wav", "wb")
+        f = open(file, "wb")
         f.write(wav)
         f.close()
 
-        pcm = self._transform_as_pcm_data(
-            "/tmp/vocode.wav", "atempo=1.0,aresample=48000,volume={0}".join(self.state_manager.get_volume())
+        pcm = self._transform_audio(
+            file,
+            self.RESAMPLE_FILTER,
+            self.state_manager.get_volume(),
+            1,
+            0,
+            desired_output="pcm"
         )
 
         self._play_sound(pcm)
