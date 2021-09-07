@@ -3,7 +3,7 @@ import os
 import random
 import math
 
-from python_mumble_bot.bot.constants import IDENTIFIER, NAME, ROOT_CHANNEL
+from python_mumble_bot.bot.constants import IDENTIFIER, NAME, ROOT_CHANNEL, VOCODE_SPEAKERS
 from python_mumble_bot.bot.event import (
     AudioEvent,
     ChannelTextEvent,
@@ -23,6 +23,8 @@ class CommandResolver:
 
         if parts[0] == "/pp":
             commands = PlayCommand(parts[1:])
+        elif parts[0] == "/pv":
+            commands = VocodeCommand(parts[1:])
         else:
             for_bot = parts[0]
             if for_bot != "/pmb":
@@ -335,12 +337,25 @@ class MusicCommand(Command):
 class VocodeCommand(Command):
     def __init__(self, data):
         super().__init__(data)
-
+        
     def generate_events(self, mongo_interface, user):
-        speaker = self.data[0]
-        words = " ".join(self.data[1:])
+        if self.data[0] == "@speakers":
+            return [ChannelTextEvent("<br>".join(VOCODE_SPEAKERS))]
 
-        return [VocodeEvent(speaker, words)]
+        else:
+            speaker = self.data[0]
+            words = " ".join(self.data[1:])
+
+            return [VocodeEvent(speaker, words)]
+
+    @staticmethod
+    def help():
+        return "<br>".join(
+            [
+                "Example call: /pmb vocode david-attenborough The planet is beautiful and green",
+                "For all available speakers, type /pmb vocode @list"
+            ]
+        )
 
 
 class PlayCommand(Command):

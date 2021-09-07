@@ -5,6 +5,7 @@ import subprocess as sp
 import wave
 import requests
 import base64
+import json
 
 from pathlib import Path
 
@@ -61,15 +62,26 @@ class PlaybackManager(EventManager):
         elif isinstance(event, MusicEvent):
             self._play_music(event)
 
-    def _process_vocode(self, event):
-        data = '{"text": "{0}": "speaker","{1}"}'.format(event.words, event.speaker)
+    def _process_vocode_event(self, event):
+        data = json.dumps(
+            {"text": event.words, "speaker": event.speaker}
+        )
+        
         response = requests.post(VOCODE_API_URL, headers=VOCODE_API_HEADERS, data=data)
 
         encoded_base64 = response.json()['audio_base64']
         wav = base64.b64decode(encoded_base64)
 
-        pcm = self._transform_as_wav(wav, "", None)
+        f = open("/tmp/vocode.wav", "wb")
+        f.write(wav)
+        f.close()
+
+        pcm = self._transform_as_pcm_data(
+            "/tmp/vocode.wav", "atempo=1.0,aresample=48000"
+        )
+
         self._play_sound(pcm)
+
 
     def _play_clips(self, event, pitch_filter):
         for ref, speed, shift in zip(
@@ -86,7 +98,7 @@ class PlaybackManager(EventManager):
             )
 
             # self.mumble.sound_output.set_audio_per_packet(0.001)
-            self._play_sound(self, pcm)
+            self._play_sound(pcm)
 
     def _play_music(self, event):
         piece = "audio/music/{0}".format(event.piece)
