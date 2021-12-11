@@ -87,7 +87,7 @@ class PlaybackManager(EventManager):
             desired_output="pcm"
         )
 
-        with open("/tmp/vocode.pcm", "w") as f:
+        with open("/tmp/vocode.pcm", "wb") as f:
             f.write(pcm)
 
         self._play_sound(pcm)
