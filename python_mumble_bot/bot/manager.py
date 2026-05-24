@@ -94,6 +94,7 @@ class PlaybackManager(EventManager):
 
 
     def _play_clips(self, event, pitch_filter):
+        print("in play clips")
         for ref, speed, shift in zip(
             event.data, event.playback_speeds, event.semitone_shifts
         ):
@@ -334,13 +335,14 @@ class PlaybackManager(EventManager):
         encode_command = "ffmpeg -i {0} -filter_complex {1} -ac 1 -f s16le -".format(
             file, filter
         )
-
         print(encode_command)
-        pcm = sp.Popen(
-            encode_command.split(" "), stdout=sp.PIPE, stderr=sp.DEVNULL
-        ).stdout.read()
-
-        return pcm
+        proc = sp.Popen(
+            encode_command.split(" "), stdout=sp.PIPE, stderr=sp.PIPE
+        )
+        out, err = proc.communicate()
+        print("FFMPEG RETURNCODE:", proc.returncode)
+        print("FFMPEG STDERR:", err.decode())
+        return out
 
     def _transform_as_wav(self, input, filter, output):
         filter = "{0},{1}".format(filter, "aresample=48000")
