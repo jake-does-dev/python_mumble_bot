@@ -136,6 +136,8 @@ class MongoInterface:
 
     def get_file_by_ref(self, ref):
         file = self._find_file_by_ref(ref)
+        if file is None:
+            raise ValueError("No clip found with reference: '{}'".format(ref))
         return file[FILE]
 
     def _find_file_by_ref(self, ref):

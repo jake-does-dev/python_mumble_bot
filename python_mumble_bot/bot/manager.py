@@ -94,22 +94,35 @@ class PlaybackManager(EventManager):
 
 
     def _play_clips(self, event, pitch_filter):
-        print("in play clips")
         for ref, speed, shift in zip(
             event.data, event.playback_speeds, event.semitone_shifts
         ):
-            file = self.state_manager.find_audio_clip(ref)
-            pcm = self._transform_audio(
-                file,
-                pitch_filter,
-                self.state_manager.get_volume(),
-                float(speed[:-1]),
-                float(shift[:-1]),
-                desired_output="pcm",
-            )
-
-            # self.mumble.sound_output.set_audio_per_packet(0.001)
-            self._play_sound(pcm)
+            try:
+                file = self.state_manager.find_audio_clip(ref)
+                if file is None:
+                    self.mumble.my_channel().send_text_message(
+                        "Could not find clip: <b>{}</b>".format(ref)
+                    )
+                    continue
+                pcm = self._transform_audio(
+                    file,
+                    pitch_filter,
+                    self.state_manager.get_volume(),
+                    float(speed[:-1]),
+                    float(shift[:-1]),
+                    desired_output="pcm",
+                )
+                if not pcm:
+                    self.mumble.my_channel().send_text_message(
+                        "Failed to process audio for: <b>{}</b>".format(ref)
+                    )
+                    continue
+                self._play_sound(pcm)
+            except Exception as e:
+                print("Error playing clip {}: {}".format(ref, e))
+                self.mumble.my_channel().send_text_message(
+                    "Error playing <b>{}</b>: {}".format(ref, str(e))
+                )
 
     def _play_music(self, event):
         piece = "audio/music/{0}".format(event.piece)
@@ -335,13 +348,10 @@ class PlaybackManager(EventManager):
         encode_command = "ffmpeg -i {0} -filter_complex {1} -ac 1 -f s16le -".format(
             file, filter
         )
-        print(encode_command)
         proc = sp.Popen(
-            encode_command.split(" "), stdout=sp.PIPE, stderr=sp.PIPE
+            encode_command.split(" "), stdout=sp.PIPE, stderr=sp.DEVNULL
         )
         out, err = proc.communicate()
-        print("FFMPEG RETURNCODE:", proc.returncode)
-        print("FFMPEG STDERR:", err.decode())
         return out
 
     def _transform_as_wav(self, input, filter, output):
@@ -349,7 +359,6 @@ class PlaybackManager(EventManager):
         encode_command = "ffmpeg -i {0} -filter_complex {1} -y {2}".format(
             input, filter, output
         )
-
 
         p = sp.Popen(encode_command.split(" "))
         p.communicate()
