@@ -1,3 +1,10 @@
+FROM node:20-slim AS frontend-build
+WORKDIR /build
+COPY frontend/package*.json ./
+RUN npm ci
+COPY frontend/ .
+RUN npm run build
+
 FROM python:3.10
 ENV LANG=C.UTF-8
 ENV LC_ALL=C.UTF-8
@@ -9,5 +16,6 @@ COPY Pipfile .
 RUN pipenv install --skip-lock
 ENV PATH="/.venv/bin:/usr/local/bin:/usr/bin:/bin"
 WORKDIR /app
-COPY . .
+COPY app/ app/
+COPY --from=frontend-build /build/dist frontend/dist
 ENTRYPOINT ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]

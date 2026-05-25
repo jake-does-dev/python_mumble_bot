@@ -180,6 +180,18 @@ class MongoInterface:
             )
         self.refresh()
 
+    def get_next_pending_command(self):
+        return self.client.voice_clips.pending_commands.find_one_and_update(
+            {"status": "pending"},
+            {"$set": {"status": "processing"}},
+            sort=[("created_at", pymongo.ASCENDING)],
+        )
+
+    def mark_command_done(self, command_id):
+        self.client.voice_clips.pending_commands.update_one(
+            {"_id": command_id}, {"$set": {"status": "done"}}
+        )
+
     def add_new_clips(self):
         new_clips = []
 
