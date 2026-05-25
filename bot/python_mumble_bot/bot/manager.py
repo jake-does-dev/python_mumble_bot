@@ -2,6 +2,7 @@ import datetime as dt
 import math
 import os
 import subprocess as sp
+import time
 import wave
 import requests
 import base64
@@ -441,6 +442,29 @@ class RecordingManager(EventManager):
                     user_name = user_wrapper.get_name()
                     sound = user_wrapper.get_sound()
                     self._write(user_name, sound.pcm)
+
+
+class CommandManager(EventManager):
+    POLL_INTERVAL = 0.1
+
+    def __init__(self, mongo_interface, playback_manager):
+        self.mongo_interface = mongo_interface
+        self.playback_manager = playback_manager
+        self._last_poll = 0
+
+    def loop(self):
+        now = time.time()
+        if now - self._last_poll < self.POLL_INTERVAL:
+            return
+        self._last_poll = now
+
+        command = self.mongo_interface.get_next_pending_command()
+        if command is None:
+            return
+
+        self.mongo_interface.mark_command_done(command["_id"])
+        event = AudioEvent([command["clip_ref"]], ["1x"], ["0s"])
+        self.playback_manager.process(event)
 
 
 class StateManager(EventManager):

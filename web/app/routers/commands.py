@@ -5,6 +5,10 @@ from app.services.clips import ClipsService
 
 router = APIRouter(prefix="/api/commands", tags=["commands"])
 
+@router.get("/history")
+def get_history(current_user: str = Depends(get_current_user)):
+    return CommandsService().get_history()
+
 @router.post("/play/{clip_ref}")
 def play_clip(clip_ref: str, current_user: str = Depends(get_current_user)):
     clip = ClipsService().get_clip_by_ref(clip_ref)
