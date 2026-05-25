@@ -1,8 +1,9 @@
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException, Depends, Request
 from fastapi.security import OAuth2PasswordRequestForm
 from app.auth import create_access_token, get_current_user
 from app.services.users import UsersService
 from app.models.users import Token, UserCreate
+from app.limiter import limiter
 from pydantic import BaseModel
 
 router = APIRouter(prefix="/api/users", tags=["users"])
@@ -12,7 +13,8 @@ class ChangePassword(BaseModel):
     new_password: str
 
 @router.post("/login", response_model=Token)
-def login(form_data: OAuth2PasswordRequestForm = Depends()):
+@limiter.limit("5/minute")
+def login(request: Request, form_data: OAuth2PasswordRequestForm = Depends()):
     if not UsersService().authenticate(form_data.username, form_data.password):
         raise HTTPException(status_code=401, detail="Invalid username or password")
     token = create_access_token({"sub": form_data.username})
