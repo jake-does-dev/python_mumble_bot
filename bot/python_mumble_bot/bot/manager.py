@@ -463,7 +463,9 @@ class CommandManager(EventManager):
             return
 
         self.mongo_interface.mark_command_done(command["_id"])
-        event = AudioEvent([command["clip_ref"]], ["1x"], ["0s"])
+        speed = command.get("speed", 1.0)
+        pitch = command.get("pitch", 0)
+        event = AudioEvent([command["clip_ref"]], [f"{speed}x"], [f"{pitch}s"])
         self.playback_manager.process(event)
 
 

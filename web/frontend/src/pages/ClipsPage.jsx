@@ -82,10 +82,10 @@ export default function ClipsPage() {
     })
   }
 
-  async function handlePlay(identifier) {
+  async function handlePlay(identifier, pitch, speed) {
     setPlayingId(identifier)
     try {
-      await api.post(`/api/commands/play/${identifier}`)
+      await api.post(`/api/commands/play/${identifier}`, { pitch, speed })
       setTimeout(fetchHistory, 1500)
     } finally {
       setPlayingId(null)
