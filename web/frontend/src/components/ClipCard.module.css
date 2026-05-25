@@ -36,6 +36,40 @@
   border: 1px solid var(--accent-border);
 }
 
+.sliders {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  margin-top: 0.25rem;
+}
+
+.sliderRow {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.sliderLabel {
+  font-size: 0.72rem;
+  color: var(--text-m);
+  display: flex;
+  justify-content: space-between;
+}
+
+.sliderLabel strong {
+  color: var(--text-h);
+  font-weight: 600;
+  min-width: 3.5rem;
+  text-align: right;
+}
+
+.slider {
+  width: 100%;
+  accent-color: var(--accent);
+  cursor: pointer;
+  height: 4px;
+}
+
 .actions {
   display: flex;
   gap: 0.5rem;

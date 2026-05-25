@@ -33,12 +33,14 @@ class CommandsService:
             for c in commands
         ]
 
-    def enqueue_play(self, clip_ref: str, requested_by: str) -> dict:
+    def enqueue_play(self, clip_ref: str, requested_by: str, pitch: int = 0, speed: float = 1.0) -> dict:
         command = {
             "clip_ref": clip_ref,
             "requested_by": requested_by,
             "status": "pending",
-            "created_at": datetime.utcnow()
+            "created_at": datetime.utcnow(),
+            "pitch": pitch,
+            "speed": speed,
         }
         self.db.pending_commands.insert_one(command)
         return command
