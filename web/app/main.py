@@ -1,14 +1,19 @@
 from pathlib import Path
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
+from slowapi import _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
+from app.limiter import limiter
 from app.routers import clips, commands, users
 from app.database import get_db
 
 PENDING_COMMANDS_TTL_SECONDS = 30 * 24 * 60 * 60  # 30 days
 
 app = FastAPI(title="Python Mumble Bot Web")
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 @app.on_event("startup")
 def create_indexes():
