@@ -1,0 +1,55 @@
+services:
+  pmb_mongo:
+    image: mongo:7
+    container_name: pmb_mongo
+    restart: unless-stopped
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGODB_USERNAME}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGODB_PASSWORD}
+    volumes:
+    - /tank/pmb/data/mongo:/data/db
+    ports:
+      - "27017:27017"
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  pmb_bot:
+    build: ../bot
+    container_name: pmb_bot
+    restart: unless-stopped
+    deploy:
+      restart_policy:
+        condition: on-failure
+        delay: 10s
+        max_attempts: 3
+    depends_on:
+      pmb_mongo:
+        condition: service_healthy
+    environment:
+      MONGODB_HOST: pmb_mongo
+      MONGODB_USERNAME: ${MONGODB_USERNAME}
+      MONGODB_PASSWORD: ${MONGODB_PASSWORD}
+      MUMBLE_SERVER_HOST: ${MUMBLE_SERVER_HOST}
+      MUMBLE_SERVER_USERNAME: ${MUMBLE_SERVER_USERNAME}
+      MUMBLE_SERVER_PASSWORD: ${MUMBLE_SERVER_PASSWORD}
+      MUMBLE_SERVER_ROOT_CHANNEL: ${MUMBLE_SERVER_ROOT_CHANNEL}
+    volumes:
+    - /tank/pmb/audio:/app/audio
+
+  pmb_web:
+    build: ../web
+    container_name: pmb_web
+    restart: unless-stopped
+    depends_on:
+      pmb_mongo:
+        condition: service_healthy
+    environment:
+      MONGODB_HOST: pmb_mongo
+      MONGODB_USERNAME: ${MONGODB_USERNAME}
+      MONGODB_PASSWORD: ${MONGODB_PASSWORD}
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY}
+    ports:
+      - "8001:8000"

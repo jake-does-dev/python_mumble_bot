@@ -32,12 +32,6 @@ def connect():
     client = Client(mumble)
     client.start()
     client.set_callbacks()
-    time.sleep(2)
-
-    client.interpret_command(
-        Greeting(os.getenv(MUMBLE_USERNAME), "/pmb play beep_boop")
-    )
-
     client.loop()
 
     return client
