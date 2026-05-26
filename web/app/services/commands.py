@@ -26,16 +26,17 @@ class CommandsService:
         return [
             {
                 "clip_ref": c["clip_ref"],
-                "clip_name": clips.get(c["clip_ref"], c["clip_ref"]),
+                "clip_name": c.get("clip_name") or clips.get(c["clip_ref"], c["clip_ref"]),
                 "requested_by": c["requested_by"],
                 "played_at": c["created_at"].isoformat() + "Z",
             }
             for c in commands
         ]
 
-    def enqueue_play(self, clip_ref: str, requested_by: str, pitch: int = 0, speed: float = 1.0) -> dict:
+    def enqueue_play(self, clip_ref: str, clip_name: str, requested_by: str, pitch: int = 0, speed: float = 1.0) -> dict:
         command = {
             "clip_ref": clip_ref,
+            "clip_name": clip_name,
             "requested_by": requested_by,
             "status": "pending",
             "created_at": datetime.utcnow(),

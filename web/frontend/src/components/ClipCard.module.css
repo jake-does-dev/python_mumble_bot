@@ -123,6 +123,8 @@
   margin-top: 0.25rem;
 }
 
+.del,
+.queue,
 .star,
 .reset,
 .play {
@@ -134,6 +136,29 @@
   padding: 4px 10px;
   font-size: 1rem;
   transition: background 0.15s, border-color 0.15s;
+}
+
+.del:hover {
+  background: #fee2e2;
+  border-color: #fca5a5;
+  color: #ef4444;
+}
+
+.delConfirm {
+  background: #fee2e2;
+  border-color: #ef4444;
+  color: #ef4444;
+}
+
+.delConfirm:hover {
+  background: #ef4444;
+  color: #fff;
+}
+
+.queue:hover {
+  background: var(--accent-bg);
+  border-color: var(--accent-border);
+  color: var(--accent);
 }
 
 .reset:hover,

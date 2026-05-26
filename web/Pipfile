@@ -15,6 +15,7 @@ passlib = "==1.7.4"
 bcrypt = "==4.0.1"
 python-multipart = "==0.0.6"
 dnspython = "==2.1.0"
+mutagen = ">=1.46"
 pydantic = "==2.5.0"
 slowapi = "==0.1.9"
 

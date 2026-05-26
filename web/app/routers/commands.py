@@ -20,5 +20,5 @@ def play_clip(clip_ref: str, options: PlayOptions = PlayOptions(), current_user:
     if not clip:
         raise HTTPException(status_code=404, detail=f"Clip '{clip_ref}' not found")
 
-    CommandsService().enqueue_play(clip_ref, requested_by=current_user, pitch=options.pitch, speed=options.speed)
+    CommandsService().enqueue_play(clip_ref, clip_name=clip["name"], requested_by=current_user, pitch=options.pitch, speed=options.speed)
     return {"message": f"Playing {clip_ref}"}
