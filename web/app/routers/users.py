@@ -29,6 +29,11 @@ def register(user: UserCreate, current_user: str = Depends(get_current_user)):
         raise HTTPException(status_code=400, detail="Username already exists")
     return {"message": "User created successfully"}
 
+@router.get("/me")
+def me(current_user: str = Depends(get_current_user)):
+    users_service = UsersService()
+    return {"username": current_user, "is_admin": users_service.is_admin(current_user)}
+
 @router.post("/change-password")
 def change_password(body: ChangePassword, current_user: str = Depends(get_current_user)):
     users_service = UsersService()

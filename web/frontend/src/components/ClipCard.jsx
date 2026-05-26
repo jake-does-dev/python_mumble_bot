@@ -50,9 +50,10 @@ function pitchLabel(v) {
   return `${v > 0 ? '+' : ''}${v} st`
 }
 
-export default function ClipCard({ clip, onToggleFavourite, onPlay, playing, view = 'grid' }) {
+export default function ClipCard({ clip, onToggleFavourite, onPlay, onDelete, onAddToQueue, playing, isAdmin = false, view = 'grid' }) {
   const [pitch, setPitch] = useState(() => loadSetting(clip.identifier, 'pitch', 0))
   const [speed, setSpeed] = useState(() => loadSetting(clip.identifier, 'speed', 1))
+  const [confirmDelete, setConfirmDelete] = useState(false)
 
   return (
     <div className={`${styles.card} ${view === 'list' ? styles.cardList : ''}`}>
@@ -96,6 +97,31 @@ export default function ClipCard({ clip, onToggleFavourite, onPlay, playing, vie
       </div>
 
       <div className={styles.actions}>
+        {isAdmin && (
+          confirmDelete
+            ? <>
+                <button
+                  className={`${styles.del} ${styles.delConfirm}`}
+                  onClick={() => onDelete(clip.identifier)}
+                  title="Confirm delete"
+                >✓</button>
+                <button
+                  className={styles.del}
+                  onClick={() => setConfirmDelete(false)}
+                  title="Cancel delete"
+                >✕</button>
+              </>
+            : <button
+                className={styles.del}
+                onClick={() => setConfirmDelete(true)}
+                title="Delete clip"
+              >🗑</button>
+        )}
+        <button
+          className={styles.queue}
+          onClick={() => onAddToQueue(clip.identifier, clip.name, pitch, speed)}
+          title="Add to queue"
+        >+</button>
         <button
           className={`${styles.star} ${clip.is_favourite ? styles.starred : ''}`}
           onClick={() => onToggleFavourite(clip.identifier)}

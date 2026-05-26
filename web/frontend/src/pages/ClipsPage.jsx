@@ -3,7 +3,15 @@ import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import api from '../api'
 import ClipCard from '../components/ClipCard'
+import UploadPanel from '../components/UploadPanel'
+import QueuePanel from '../components/QueuePanel'
 import styles from './ClipsPage.module.css'
+
+const newId = () => Date.now().toString(36) + Math.random().toString(36).slice(2)
+
+function loadQueues() {
+  try { return JSON.parse(localStorage.getItem('pmb_queues') || '[]') } catch { return [] }
+}
 
 function timeAgo(isoString) {
   const seconds = Math.floor((Date.now() - new Date(isoString)) / 1000)
@@ -33,6 +41,7 @@ export default function ClipsPage() {
   const [tags, setTags] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
+  const [isAdmin, setIsAdmin] = useState(false)
 
   const [search, setSearch] = useState('')
   const [activeTag, setActiveTag] = useState(null)
@@ -40,6 +49,12 @@ export default function ClipsPage() {
   const [playingId, setPlayingId] = useState(null)
   const [view, setView] = useState(() => localStorage.getItem('pmb_view') || 'grid')
   const [sort, setSort] = useState(() => localStorage.getItem('pmb_sort') || 'alpha')
+  const [uploadOpen, setUploadOpen] = useState(false)
+
+  const [sidebarTab, setSidebarTab] = useState('history')
+  const [queues, setQueues] = useState(loadQueues)
+  const [activeQueueId, setActiveQueueId] = useState(() => localStorage.getItem('pmb_active_queue') || null)
+  const [playingQueue, setPlayingQueue] = useState(false)
 
   function handleSetView(v) {
     setView(v)
@@ -58,10 +73,11 @@ export default function ClipsPage() {
   }, [])
 
   useEffect(() => {
-    Promise.all([api.get('/api/clips/'), api.get('/api/clips/tags')])
-      .then(([clipsRes, tagsRes]) => {
+    Promise.all([api.get('/api/clips/'), api.get('/api/clips/tags'), api.get('/api/users/me')])
+      .then(([clipsRes, tagsRes, meRes]) => {
         setClips(clipsRes.data)
         setTags(tagsRes.data)
+        setIsAdmin(meRes.data.is_admin)
       })
       .catch(err => {
         if (err.response?.status === 401) {
@@ -118,6 +134,101 @@ export default function ClipsPage() {
     }
   }
 
+  function handleUploaded(newClip) {
+    setClips(prev => [...prev, { ...newClip, is_favourite: false }])
+    api.get('/api/clips/tags').then(res => setTags(res.data)).catch(() => {})
+  }
+
+  function handleDelete(identifier) {
+    setClips(prev => prev.filter(c => c.identifier !== identifier))
+    api.delete(`/api/clips/${identifier}`).catch(() => {
+      api.get('/api/clips/').then(res => setClips(res.data)).catch(() => {})
+    })
+  }
+
+  function saveQueues(next) {
+    setQueues(next)
+    localStorage.setItem('pmb_queues', JSON.stringify(next))
+  }
+
+  function selectQueue(id) {
+    setActiveQueueId(id)
+    localStorage.setItem('pmb_active_queue', id)
+  }
+
+  function handleCreateQueue(name) {
+    const q = { id: newId(), name, items: [] }
+    const next = [...queues, q]
+    saveQueues(next)
+    selectQueue(q.id)
+    setSidebarTab('queue')
+  }
+
+  function handleDeleteQueue(id) {
+    const next = queues.filter(q => q.id !== id)
+    saveQueues(next)
+    const newActive = next.length > 0 ? next[next.length - 1].id : null
+    selectQueue(newActive || '')
+  }
+
+  function handleRenameQueue(id, name) {
+    saveQueues(queues.map(q => q.id === id ? { ...q, name } : q))
+  }
+
+  function handleAddToQueue(identifier, name, pitch, speed) {
+    let targetId = activeQueueId
+    let current = queues
+    if (!current.find(q => q.id === targetId)) {
+      const q = { id: newId(), name: 'Queue 1', items: [] }
+      current = [...queues, q]
+      saveQueues(current)
+      selectQueue(q.id)
+      targetId = q.id
+    }
+    saveQueues(current.map(q =>
+      q.id === targetId
+        ? { ...q, items: [...q.items, { id: newId(), identifier, name, pitch, speed }] }
+        : q
+    ))
+    setSidebarTab('queue')
+  }
+
+  function handleRemoveFromQueue(queueId, itemId) {
+    saveQueues(queues.map(q =>
+      q.id === queueId ? { ...q, items: q.items.filter(i => i.id !== itemId) } : q
+    ))
+  }
+
+  function handleMoveInQueue(queueId, itemId, direction) {
+    saveQueues(queues.map(q => {
+      if (q.id !== queueId) return q
+      const items = [...q.items]
+      const idx = items.findIndex(i => i.id === itemId)
+      const to = idx + direction
+      if (to < 0 || to >= items.length) return q;
+      [items[idx], items[to]] = [items[to], items[idx]]
+      return { ...q, items }
+    }))
+  }
+
+  function handleClearQueue(queueId) {
+    saveQueues(queues.map(q => q.id === queueId ? { ...q, items: [] } : q))
+  }
+
+  async function handlePlayQueue(queueId) {
+    const q = queues.find(q => q.id === queueId)
+    if (!q || q.items.length === 0) return
+    setPlayingQueue(true)
+    try {
+      for (const item of q.items) {
+        await api.post(`/api/commands/play/${item.identifier}`, { pitch: item.pitch, speed: item.speed })
+      }
+      setTimeout(fetchHistory, 1500)
+    } finally {
+      setPlayingQueue(false)
+    }
+  }
+
   function handleLogout() {
     logout()
     navigate('/login')
@@ -150,7 +261,20 @@ export default function ClipsPage() {
                 <button className={`${styles.viewBtn} ${view === 'grid' ? styles.active : ''}`} onClick={() => handleSetView('grid')} title="Grid view">⊞</button>
                 <button className={`${styles.viewBtn} ${view === 'list' ? styles.active : ''}`} onClick={() => handleSetView('list')} title="List view">☰</button>
               </div>
+              <button
+                className={`${styles.viewBtn} ${uploadOpen ? styles.active : ''}`}
+                onClick={() => setUploadOpen(o => !o)}
+                title="Upload a clip"
+              >
+                ↑ Upload
+              </button>
             </div>
+            {uploadOpen && (
+              <UploadPanel
+                onClose={() => setUploadOpen(false)}
+                onUploaded={handleUploaded}
+              />
+            )}
             <div className={styles.filters}>
               <button
                 className={`${styles.filterBtn} ${!activeTag && !favouritesOnly ? styles.active : ''}`}
@@ -190,7 +314,10 @@ export default function ClipsPage() {
                       clip={clip}
                       onToggleFavourite={handleToggleFavourite}
                       onPlay={handlePlay}
+                      onDelete={handleDelete}
+                      onAddToQueue={handleAddToQueue}
                       playing={playingId === clip.identifier}
+                      isAdmin={isAdmin}
                       view={view}
                     />
                   ))}
@@ -201,32 +328,67 @@ export default function ClipsPage() {
         </div>
 
         <aside className={styles.sidebar}>
-          <h2 className={styles.sidebarTitle}>Recently Played</h2>
-          {history.length === 0
-            ? <p className={styles.sidebarEmpty}>Nothing played yet</p>
-            : (
-              <ol className={styles.historyList}>
-                {history.reduce((acc, entry, i) => {
-                  const label = dayLabel(entry.played_at)
-                  const prevLabel = i > 0 ? dayLabel(history[i - 1].played_at) : null
-                  if (label !== prevLabel) {
-                    acc.push(
-                      <li key={`day-${label}`} className={styles.daySeparator}>{label}</li>
-                    )
-                  }
-                  acc.push(
-                    <li key={i} className={styles.historyItem}>
-                      <span className={styles.historyName}>{entry.clip_name}</span>
-                      <span className={styles.historyMeta}>
-                        {entry.requested_by} · {timeAgo(entry.played_at)}
-                      </span>
-                    </li>
-                  )
-                  return acc
-                }, [])}
-              </ol>
-            )
-          }
+          <div className={styles.sidebarTabs}>
+            <button
+              className={`${styles.sidebarTab} ${sidebarTab === 'queue' ? styles.sidebarTabActive : ''}`}
+              onClick={() => setSidebarTab('queue')}
+            >
+              Queue{queues.find(q => q.id === activeQueueId)?.items.length > 0
+                ? ` (${queues.find(q => q.id === activeQueueId).items.length})`
+                : ''}
+            </button>
+            <button
+              className={`${styles.sidebarTab} ${sidebarTab === 'history' ? styles.sidebarTabActive : ''}`}
+              onClick={() => setSidebarTab('history')}
+            >
+              History
+            </button>
+          </div>
+
+          {sidebarTab === 'queue' ? (
+            <QueuePanel
+              queues={queues}
+              activeQueueId={activeQueueId}
+              onSelectQueue={selectQueue}
+              onCreateQueue={handleCreateQueue}
+              onDeleteQueue={handleDeleteQueue}
+              onRenameQueue={handleRenameQueue}
+              onRemoveItem={handleRemoveFromQueue}
+              onMoveItem={handleMoveInQueue}
+              onPlayQueue={handlePlayQueue}
+              onClearQueue={handleClearQueue}
+              playingQueue={playingQueue}
+            />
+          ) : (
+            <>
+              <h2 className={styles.sidebarTitle}>Recently Played</h2>
+              {history.length === 0
+                ? <p className={styles.sidebarEmpty}>Nothing played yet</p>
+                : (
+                  <ol className={styles.historyList}>
+                    {history.reduce((acc, entry, i) => {
+                      const label = dayLabel(entry.played_at)
+                      const prevLabel = i > 0 ? dayLabel(history[i - 1].played_at) : null
+                      if (label !== prevLabel) {
+                        acc.push(
+                          <li key={`day-${label}`} className={styles.daySeparator}>{label}</li>
+                        )
+                      }
+                      acc.push(
+                        <li key={i} className={styles.historyItem}>
+                          <span className={styles.historyName}>{entry.clip_name}</span>
+                          <span className={styles.historyMeta}>
+                            {entry.requested_by} · {timeAgo(entry.played_at)}
+                          </span>
+                        </li>
+                      )
+                      return acc
+                    }, [])}
+                  </ol>
+                )
+              }
+            </>
+          )}
         </aside>
       </div>
     </div>

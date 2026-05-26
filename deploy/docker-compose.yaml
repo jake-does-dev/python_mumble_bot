@@ -51,6 +51,8 @@ services:
       MONGODB_USERNAME: ${MONGODB_USERNAME}
       MONGODB_PASSWORD: ${MONGODB_PASSWORD}
       JWT_SECRET_KEY: ${JWT_SECRET_KEY}
+    volumes:
+    - /tank/pmb/audio:/app/audio
     ports:
       - "8001:8000"
 
