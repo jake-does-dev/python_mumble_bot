@@ -13,6 +13,46 @@
   box-shadow: var(--shadow);
 }
 
+.cardList {
+  flex-direction: row;
+  align-items: center;
+  padding: 0.625rem 1rem;
+  gap: 1rem;
+}
+
+.cardList .info {
+  flex: 0 0 200px;
+  min-width: 0;
+}
+
+.cardList .name {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cardList .tags {
+  flex-wrap: nowrap;
+  overflow: hidden;
+}
+
+.cardList .sliders {
+  flex-direction: row;
+  flex: 1;
+  gap: 1rem;
+  margin-top: 0;
+}
+
+.cardList .sliderRow {
+  flex: 1;
+  min-width: 0;
+}
+
+.cardList .actions {
+  margin-top: 0;
+  flex-shrink: 0;
+}
+
 .name {
   font-weight: 500;
   color: var(--text-h);
@@ -34,6 +74,12 @@
   background: var(--accent-bg);
   color: var(--accent);
   border: 1px solid var(--accent-border);
+}
+
+.date {
+  font-size: 0.7rem;
+  color: var(--text);
+  margin-top: 2px;
 }
 
 .sliders {
@@ -78,6 +124,7 @@
 }
 
 .star,
+.reset,
 .play {
   border: 1px solid var(--border);
   border-radius: 6px;
@@ -89,6 +136,7 @@
   transition: background 0.15s, border-color 0.15s;
 }
 
+.reset:hover,
 .star:hover {
   background: var(--accent-bg);
   border-color: var(--accent-border);

@@ -1,8 +1,12 @@
 .page {
   max-width: 1200px;
   margin: 0 auto;
-  padding: 0 1.5rem 3rem;
+  padding: 0 1.5rem;
   box-sizing: border-box;
+  height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
 
 .header {
@@ -41,6 +45,40 @@
   flex-direction: column;
   gap: 0.75rem;
   margin-bottom: 1.25rem;
+}
+
+.controlsTop {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.viewToggle {
+  display: flex;
+  gap: 2px;
+  flex-shrink: 0;
+}
+
+.viewBtn {
+  padding: 4px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text);
+  font-size: 1rem;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+
+.viewBtn:hover {
+  border-color: var(--accent-border);
+  color: var(--text-h);
+}
+
+.viewBtn.active {
+  background: var(--accent-bg);
+  border-color: var(--accent-border);
+  color: var(--accent);
 }
 
 .search {
@@ -93,7 +131,9 @@
   display: grid;
   grid-template-columns: 1fr 260px;
   gap: 1.5rem;
-  align-items: start;
+  align-items: stretch;
+  flex: 1;
+  min-height: 0;
 }
 
 @media (max-width: 768px) {
@@ -104,6 +144,18 @@
 
 .main {
   min-width: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.clipsScroll {
+  flex: 1;
+  overflow-y: auto;
+  min-height: 0;
+  padding-bottom: 2rem;
+  padding-right: 0.5rem;
+  scrollbar-gutter: stable;
 }
 
 .count {
@@ -116,6 +168,12 @@
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
   gap: 1rem;
+}
+
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
 }
 
 .status {
@@ -134,8 +192,9 @@
   border: 1px solid var(--border);
   border-radius: 8px;
   padding: 1rem;
-  position: sticky;
-  top: 1rem;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
 
 .sidebarTitle {
@@ -160,6 +219,25 @@
   display: flex;
   flex-direction: column;
   gap: 0.625rem;
+  overflow-y: auto;
+  flex: 1;
+}
+
+.daySeparator {
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text);
+  padding-top: 0.625rem;
+  border-top: 1px solid var(--border);
+  margin-top: 0.25rem;
+}
+
+.daySeparator:first-child {
+  border-top: none;
+  margin-top: 0;
+  padding-top: 0;
 }
 
 .historyItem {

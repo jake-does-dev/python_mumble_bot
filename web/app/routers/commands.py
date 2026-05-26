@@ -8,7 +8,7 @@ router = APIRouter(prefix="/api/commands", tags=["commands"])
 
 class PlayOptions(BaseModel):
     pitch: int = Field(default=0, ge=-12, le=12)
-    speed: float = Field(default=1.0, ge=0.05, le=4.0)
+    speed: float = Field(default=1.0, ge=0.05, le=4.0)  # 0.05 is ffmpeg's lower limit
 
 @router.get("/history")
 def get_history(current_user: str = Depends(get_current_user)):
