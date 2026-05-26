@@ -342,7 +342,7 @@ class MusicCommand(Command):
 class VocodeCommand(Command):
     def __init__(self, data):
         super().__init__(data)
-        
+
     def generate_events(self, mongo_interface, user):
         if self.data[0] == "@speakers":
             return [ChannelTextEvent("<br>".join(VOCODE_SPEAKERS))]
@@ -358,7 +358,7 @@ class VocodeCommand(Command):
         return "<br>".join(
             [
                 "Example call: /pmb vocode david-attenborough The planet is beautiful and green",
-                "For all available speakers, type /pmb vocode @list"
+                "For all available speakers, type /pmb vocode @list",
             ]
         )
 

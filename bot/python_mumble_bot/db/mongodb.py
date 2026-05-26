@@ -195,7 +195,7 @@ class MongoInterface:
     def add_new_clips(self):
         new_clips = []
 
-        (root, _, files) = next(os.walk(self.NEW_CLIPS_PATH))
+        root, _, files = next(os.walk(self.NEW_CLIPS_PATH))
 
         data = ((os.path.getmtime("".join([root, "/", f])), f) for f in files)
         for creation_time, file in sorted(data):

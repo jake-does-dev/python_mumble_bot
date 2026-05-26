@@ -25,7 +25,8 @@ from python_mumble_bot.musicxml.parser import parse_musicxml
 
 MUSIC_XML_DIR = Path("audio/music")
 VOCODE_API_URL = "https://mumble.stream/speak_spectrogram"
-VOCODE_API_HEADERS = {'Content-Type': 'application/json'}
+VOCODE_API_HEADERS = {"Content-Type": "application/json"}
+
 
 class EventManager:
     def process(self, event):
@@ -53,7 +54,11 @@ class PlaybackManager(EventManager):
         self.state_manager = state_manager
 
     def accept(self, event):
-        return isinstance(event, AudioEvent) or isinstance(event, MusicEvent) or isinstance(event, VocodeEvent)
+        return (
+            isinstance(event, AudioEvent)
+            or isinstance(event, MusicEvent)
+            or isinstance(event, VocodeEvent)
+        )
 
     def dispatch(self, event):
         if isinstance(event, AudioEvent):
@@ -66,13 +71,11 @@ class PlaybackManager(EventManager):
     def _process_vocode_event(self, event):
         file = "/tmp/vocode.wav"
 
-        data = json.dumps(
-            {"text": event.words, "speaker": event.speaker}
-        )
-        
+        data = json.dumps({"text": event.words, "speaker": event.speaker})
+
         response = requests.post(VOCODE_API_URL, headers=VOCODE_API_HEADERS, data=data)
 
-        encoded_base64 = response.json()['audio_base64']
+        encoded_base64 = response.json()["audio_base64"]
         wav = base64.b64decode(encoded_base64)
 
         f = open(file, "wb")
@@ -85,14 +88,13 @@ class PlaybackManager(EventManager):
             self.state_manager.get_volume(),
             1,
             0,
-            desired_output="pcm"
+            desired_output="pcm",
         )
 
         with open("/tmp/vocode.pcm", "wb") as f:
             f.write(pcm)
 
         self._play_sound(pcm)
-
 
     def _play_clips(self, event, pitch_filter):
         print("in play clips")
@@ -221,7 +223,11 @@ class PlaybackManager(EventManager):
             amix_command.append("-filter_complex")
 
             # Normalise downmixed audio; when downmixing, volume of each input is set to 1/N where N is number of inputs, so increase volume of each by N
-            amix_command.append("amix=inputs={0}:duration=longest,volume={1}".format(len(measure_voice_files), len(measure_voice_files)))
+            amix_command.append(
+                "amix=inputs={0}:duration=longest,volume={1}".format(
+                    len(measure_voice_files), len(measure_voice_files)
+                )
+            )
             # amix_command.append("amix=inputs={0}:duration=longest".format(len(measure_voice_files)))
             # amix_command.append(
             #     "amix=inputs={0}:duration=longest:dropout_transition=0,dynaudnorm,volume={1}".format(
@@ -337,9 +343,7 @@ class PlaybackManager(EventManager):
             file, filter
         )
         print(encode_command)
-        proc = sp.Popen(
-            encode_command.split(" "), stdout=sp.PIPE, stderr=sp.PIPE
-        )
+        proc = sp.Popen(encode_command.split(" "), stdout=sp.PIPE, stderr=sp.PIPE)
         out, err = proc.communicate()
         print("FFMPEG RETURNCODE:", proc.returncode)
         print("FFMPEG STDERR:", err.decode())
@@ -350,7 +354,6 @@ class PlaybackManager(EventManager):
         encode_command = "ffmpeg -i {0} -filter_complex {1} -y {2}".format(
             input, filter, output
         )
-
 
         p = sp.Popen(encode_command.split(" "))
         p.communicate()
@@ -410,7 +413,7 @@ class RecordingManager(EventManager):
         self.mumble_wrapper.set_receive_sound(True)
         self.mumble_wrapper.start_recording()
 
-        for user_wrapper in self.mumble_wrapper.get_users():            
+        for user_wrapper in self.mumble_wrapper.get_users():
             user_name = user_wrapper.get_name()
 
             file_name = "".join(
