@@ -1,9 +1,14 @@
 import argparse
+import math
 import os
 import random
-import math
 
-from python_mumble_bot.bot.constants import IDENTIFIER, NAME, ROOT_CHANNEL, VOCODE_SPEAKERS
+from python_mumble_bot.bot.constants import (
+    IDENTIFIER,
+    NAME,
+    ROOT_CHANNEL,
+    VOCODE_SPEAKERS,
+)
 from python_mumble_bot.bot.event import (
     AudioEvent,
     ChannelTextEvent,

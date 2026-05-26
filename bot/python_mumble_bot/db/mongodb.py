@@ -19,10 +19,10 @@ from python_mumble_bot.bot.constants import (
     TAGS,
 )
 
+
 class MongoInterface:
     NEW_CLIPS_PATH = Path("audio/new/")
     ALL_CLIPS_PATH = Path("audio/")
-    NEW_CLIP_DAY_THRESHOLD = 2
 
     def __init__(self):
         self.client = None
@@ -200,14 +200,7 @@ class MongoInterface:
         data = ((os.path.getmtime("".join([root, "/", f])), f) for f in files)
         for creation_time, file in sorted(data):
             date = datetime.fromtimestamp(creation_time)
-            # formatted_date = date.strftime(DATE_FORMAT)
-
-            if (datetime.now() - date).days < self.NEW_CLIP_DAY_THRESHOLD:
-                tags = ["new"]
-            else:
-                tags = []
-
-            new_clip = self.add_clip(file, upload_time=date, tags=tags)
+            new_clip = self.add_clip(file, upload_time=date)
             new_clips.append(new_clip)
             os.rename(
                 self.NEW_CLIPS_PATH.joinpath(file), self.ALL_CLIPS_PATH.joinpath(file)

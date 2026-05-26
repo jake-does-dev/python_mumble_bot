@@ -1,14 +1,14 @@
+import base64
 import datetime as dt
+import json
 import math
 import os
 import subprocess as sp
 import time
 import wave
-import requests
-import base64
-import json
-
 from pathlib import Path
+
+import requests
 
 from python_mumble_bot.bot.constants import BITRATE, DEFAULT_RECORDING_DIR, ROOT_CHANNEL
 from python_mumble_bot.bot.event import (
