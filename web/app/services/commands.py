@@ -1,6 +1,8 @@
-from datetime import datetime
-from typing import Optional
+from datetime import datetime, timedelta
+from typing import List, Optional
+
 import pymongo
+
 from app.database import get_db
 
 HISTORY_LIMIT = 50
@@ -13,7 +15,7 @@ class CommandsService:
     def get_history(self) -> list:
         commands = list(
             self.db.pending_commands.find(
-                {"status": "done"},
+                {"status": "done", "type": {"$ne": "announce"}},
                 sort=[("created_at", pymongo.DESCENDING)],
                 limit=HISTORY_LIMIT,
             )
@@ -35,6 +37,7 @@ class CommandsService:
 
     def enqueue_play(self, clip_ref: str, clip_name: str, requested_by: str, pitch: int = 0, speed: float = 1.0) -> dict:
         command = {
+            "type": "play",
             "clip_ref": clip_ref,
             "clip_name": clip_name,
             "requested_by": requested_by,
@@ -45,6 +48,41 @@ class CommandsService:
         }
         self.db.pending_commands.insert_one(command)
         return command
+
+    @staticmethod
+    def _fmt_cmd(clip_name: str, pitch: int, speed: float) -> str:
+        return f"/pp {speed:g}x {pitch}s {clip_name}"
+
+    def enqueue_queue(self, items: List[dict], requested_by: str, queue_name: str) -> None:
+        base_time = datetime.utcnow()
+        label = " → ".join(
+            self._fmt_cmd(
+                item.get("clip_name") or item["clip_ref"],
+                item.get("pitch", 0),
+                item.get("speed", 1.0),
+            )
+            for item in items
+        )
+        docs = [
+            {
+                "type": "announce",
+                "message": f"<b>{requested_by}</b> queued: {label}",
+                "status": "pending",
+                "created_at": base_time,
+            }
+        ]
+        for i, item in enumerate(items, start=1):
+            docs.append({
+                "type": "queue_play",
+                "clip_ref": item["clip_ref"],
+                "clip_name": item.get("clip_name") or item["clip_ref"],
+                "requested_by": requested_by,
+                "status": "pending",
+                "created_at": base_time + timedelta(microseconds=i),
+                "pitch": item.get("pitch", 0),
+                "speed": item.get("speed", 1.0),
+            })
+        self.db.pending_commands.insert_many(docs)
 
     def get_next_pending(self) -> Optional[dict]:
         return self.db.pending_commands.find_one({"status": "pending"})

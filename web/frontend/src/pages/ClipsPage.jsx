@@ -103,7 +103,7 @@ export default function ClipsPage() {
       .filter(clip => {
         if (favouritesOnly && !clip.is_favourite) return false
         if (activeTag && !clip.tags.includes(activeTag)) return false
-        if (q && !clip.name.toLowerCase().includes(q)) return false
+        if (q && !clip.name.toLowerCase().includes(q) && !clip.identifier.toLowerCase().includes(q)) return false
         return true
       })
       .sort((a, b) => {
@@ -185,6 +185,8 @@ export default function ClipsPage() {
       selectQueue(q.id)
       targetId = q.id
     }
+    const target = current.find(q => q.id === targetId)
+    if (target && target.items.length >= 15) return
     saveQueues(current.map(q =>
       q.id === targetId
         ? { ...q, items: [...q.items, { id: newId(), identifier, name, pitch, speed }] }
@@ -220,9 +222,15 @@ export default function ClipsPage() {
     if (!q || q.items.length === 0) return
     setPlayingQueue(true)
     try {
-      for (const item of q.items) {
-        await api.post(`/api/commands/play/${item.identifier}`, { pitch: item.pitch, speed: item.speed })
-      }
+      await api.post('/api/commands/play-queue', {
+        queue_name: q.name,
+        items: q.items.map(item => ({
+          clip_ref: item.identifier,
+          clip_name: item.name,
+          pitch: item.pitch,
+          speed: item.speed,
+        })),
+      })
       setTimeout(fetchHistory, 1500)
     } finally {
       setPlayingQueue(false)
@@ -245,13 +253,18 @@ export default function ClipsPage() {
         <div className={styles.main}>
           <div className={styles.controls}>
             <div className={styles.controlsTop}>
-              <input
-                className={styles.search}
-                type="search"
-                placeholder="Search clips…"
-                value={search}
-                onChange={e => setSearch(e.target.value)}
-              />
+              <div className={styles.searchWrap}>
+                <input
+                  className={styles.search}
+                  type="search"
+                  placeholder="Search clips…"
+                  value={search}
+                  onChange={e => setSearch(e.target.value)}
+                />
+                {search && (
+                  <button className={styles.searchClear} onClick={() => setSearch('')} title="Clear search">✕</button>
+                )}
+              </div>
               <div className={styles.viewToggle}>
                 <button className={`${styles.viewBtn} ${sort === 'alpha'   ? styles.active : ''}`} onClick={() => handleSetSort('alpha')}  title="Sort A→Z">A→Z</button>
                 <button className={`${styles.viewBtn} ${sort === 'newest'  ? styles.active : ''}`} onClick={() => handleSetSort('newest')} title="Sort newest first">Date ↓</button>

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import styles from './ClipCard.module.css'
 
 const PITCH_MIN = -12
@@ -54,11 +54,36 @@ export default function ClipCard({ clip, onToggleFavourite, onPlay, onDelete, on
   const [pitch, setPitch] = useState(() => loadSetting(clip.identifier, 'pitch', 0))
   const [speed, setSpeed] = useState(() => loadSetting(clip.identifier, 'speed', 1))
   const [confirmDelete, setConfirmDelete] = useState(false)
+  const nameInnerRef = useRef(null)
+
+  useEffect(() => {
+    const inner = nameInnerRef.current
+    if (!inner) return
+    const update = () => {
+      const overflow = inner.scrollWidth - inner.parentElement.clientWidth
+      if (overflow > 0) {
+        inner.style.setProperty('--name-overflow', `-${overflow}px`)
+        inner.dataset.scrollable = 'true'
+      } else {
+        inner.style.removeProperty('--name-overflow')
+        delete inner.dataset.scrollable
+      }
+    }
+    update()
+    const ro = new ResizeObserver(update)
+    ro.observe(inner.parentElement)
+    return () => ro.disconnect()
+  }, [clip.name])
 
   return (
     <div className={`${styles.card} ${view === 'list' ? styles.cardList : ''}`}>
       <div className={styles.info}>
-        <div className={styles.name}>{clip.name}</div>
+        <div className={styles.nameRow}>
+          <span className={styles.name}>
+            <span className={styles.nameInner} ref={nameInnerRef}>{clip.name}</span>
+          </span>
+          <span className={styles.identifier}>{clip.identifier}</span>
+        </div>
         <div className={styles.tags}>
           {clip.tags.map(tag => (
             <span key={tag} className={styles.tag}>{tag}</span>
