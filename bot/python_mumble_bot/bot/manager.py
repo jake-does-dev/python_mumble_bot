@@ -450,9 +450,10 @@ class RecordingManager(EventManager):
 class CommandManager(EventManager):
     POLL_INTERVAL = 0.1
 
-    def __init__(self, mongo_interface, playback_manager):
+    def __init__(self, mongo_interface, playback_manager, text_message_manager):
         self.mongo_interface = mongo_interface
         self.playback_manager = playback_manager
+        self.text_message_manager = text_message_manager
         self._last_poll = 0
 
     def loop(self):
@@ -466,8 +467,21 @@ class CommandManager(EventManager):
             return
 
         self.mongo_interface.mark_command_done(command["_id"])
+        cmd_type = command.get("type", "play")
+
+        if cmd_type == "announce":
+            self.text_message_manager.process(ChannelTextEvent(command["message"]))
+            return
+
         speed = command.get("speed", 1.0)
         pitch = command.get("pitch", 0)
+
+        if cmd_type == "play":
+            clip_name = command.get("clip_name") or command["clip_ref"]
+            cmd_str = f"/pp {speed:g}x {pitch}s {clip_name}"
+            msg = f"<b>{command['requested_by']}</b> played: {cmd_str}"
+            self.text_message_manager.process(ChannelTextEvent(msg))
+
         event = AudioEvent([command["clip_ref"]], [f"{speed}x"], [f"{pitch}s"])
         self.playback_manager.process(event)
 

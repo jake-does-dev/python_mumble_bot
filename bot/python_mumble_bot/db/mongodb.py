@@ -184,7 +184,7 @@ class MongoInterface:
         return self.client.voice_clips.pending_commands.find_one_and_update(
             {"status": "pending"},
             {"$set": {"status": "processing"}},
-            sort=[("created_at", pymongo.ASCENDING)],
+            sort=[("created_at", pymongo.ASCENDING), ("_id", pymongo.ASCENDING)],
         )
 
     def mark_command_done(self, command_id):

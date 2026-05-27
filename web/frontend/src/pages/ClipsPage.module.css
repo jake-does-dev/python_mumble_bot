@@ -81,15 +81,20 @@
   color: var(--accent);
 }
 
+.searchWrap {
+  position: relative;
+  width: 100%;
+  max-width: 400px;
+}
+
 .search {
-  padding: 0.5rem 0.75rem;
+  padding: 0.5rem 2rem 0.5rem 0.75rem;
   border: 1px solid var(--border);
   border-radius: 6px;
   background: var(--code-bg);
   color: var(--text-h);
   font-size: 1rem;
   width: 100%;
-  max-width: 400px;
   box-sizing: border-box;
   outline: none;
   transition: border-color 0.15s;
@@ -97,6 +102,26 @@
 
 .search:focus {
   border-color: var(--accent);
+}
+
+.searchClear {
+  position: absolute;
+  right: 0.4rem;
+  top: 50%;
+  transform: translateY(-50%);
+  background: transparent;
+  border: none;
+  color: var(--text);
+  font-size: 0.75rem;
+  cursor: pointer;
+  padding: 2px 4px;
+  line-height: 1;
+  border-radius: 4px;
+  transition: color 0.15s;
+}
+
+.searchClear:hover {
+  color: var(--text-h);
 }
 
 .filters {

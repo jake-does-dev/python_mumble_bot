@@ -78,7 +78,7 @@ class Client:
         )
 
         command_manager = CommandManager(
-            state_manager.mongo_interface, playback_manager
+            state_manager.mongo_interface, playback_manager, text_message_manager
         )
 
         self.managers[self.STATE_MANAGER] = state_manager
