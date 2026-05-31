@@ -79,9 +79,7 @@ class MongoInterface:
 
     def set_volume(self, volume):
         self.volume = volume
-        self.db.playback_volume.update_one(
-            {}, {"$set": {"playback_volume": volume}}
-        )
+        self.db.playback_volume.update_one({}, {"$set": {"playback_volume": volume}})
 
     def get_volume(self):
         record = self.db.playback_volume.find_one({})
