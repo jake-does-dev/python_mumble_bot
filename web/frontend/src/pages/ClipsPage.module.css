@@ -309,6 +309,12 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  cursor: pointer;
+  transition: color 0.15s;
+}
+
+.historyName:hover {
+  color: var(--accent);
 }
 
 .historyMeta {
