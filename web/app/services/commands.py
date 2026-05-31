@@ -55,14 +55,11 @@ class CommandsService:
 
     def enqueue_queue(self, items: List[dict], requested_by: str, queue_name: str) -> None:
         base_time = datetime.utcnow()
-        label = " → ".join(
-            self._fmt_cmd(
-                item.get("clip_name") or item["clip_ref"],
-                item.get("pitch", 0),
-                item.get("speed", 1.0),
-            )
+        chain = " ".join(
+            f"{item.get('speed', 1.0):g}x {item.get('pitch', 0)}s {item.get('clip_name') or item['clip_ref']}"
             for item in items
         )
+        label = f"/pp {chain}"
         docs = [
             {
                 "type": "announce",

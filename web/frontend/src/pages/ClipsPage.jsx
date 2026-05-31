@@ -93,7 +93,7 @@ export default function ClipsPage() {
   }, [])
 
   useEffect(() => {
-    const id = setInterval(fetchHistory, 10000)
+    const id = setInterval(fetchHistory, 3000)
     return () => clearInterval(id)
   }, [fetchHistory])
 
@@ -389,7 +389,7 @@ export default function ClipsPage() {
                       }
                       acc.push(
                         <li key={i} className={styles.historyItem}>
-                          <span className={styles.historyName}>{entry.clip_name}</span>
+                          <span className={styles.historyName} onClick={() => setSearch(entry.clip_name)} title="Search for this clip">{entry.clip_name}</span>
                           <span className={styles.historyMeta}>
                             {entry.requested_by} · {timeAgo(entry.played_at)}
                           </span>
