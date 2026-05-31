@@ -4,13 +4,15 @@ from pathlib import Path
 
 import pymongo
 
-from python_mumble_bot.bot.constants import (
+from pmb_core.constants import (
     CREATION_TIME,
+    DEFAULT_DATABASE,
     FILE,
     FILE_PREFIX,
     ID,
     IDENTIFIER,
     IDENTIFIER_PREFIX,
+    MONGODB_DATABASE,
     MONGODB_HOST,
     MONGODB_PASSWORD,
     MONGODB_USERNAME,
@@ -29,6 +31,8 @@ class MongoInterface:
         self.file_prefixes_collection = None
         self.clips_collection = None
         self.volume = None
+        self.db_name = os.getenv(MONGODB_DATABASE, DEFAULT_DATABASE)
+        self.db = None
 
     def connect(self):
         self.client = pymongo.MongoClient(
@@ -40,11 +44,14 @@ class MongoInterface:
                     os.getenv(MONGODB_PASSWORD),
                     "@",
                     os.getenv(MONGODB_HOST),
-                    ":27017/voice_clips?authSource=admin",
+                    ":27017/",
+                    self.db_name,
+                    "?authSource=admin",
                 ]
             )
         )
 
+        self.db = self.client[self.db_name]
         self.volume = self.get_volume()
 
     def set_up_identifiers(self):
@@ -64,20 +71,20 @@ class MongoInterface:
                 IDENTIFIER_PREFIX: identifier_prefix,
                 NEXT_ID: 0,
             }
-            self.client.voice_clips.identifiers.insert_one(id_doc)
+            self.db.identifiers.insert_one(id_doc)
 
     def refresh(self):
-        self.file_prefixes_collection = self.client.voice_clips.identifiers
-        self.clips_collection = self.client.voice_clips.clips
+        self.file_prefixes_collection = self.db.identifiers
+        self.clips_collection = self.db.clips
 
     def set_volume(self, volume):
         self.volume = volume
-        self.client.voice_clips.playback_volume.update_one(
+        self.db.playback_volume.update_one(
             {}, {"$set": {"playback_volume": volume}}
         )
 
     def get_volume(self):
-        record = self.client.voice_clips.playback_volume.find_one({})
+        record = self.db.playback_volume.find_one({})
         return record["playback_volume"]
 
     def add_clip(self, file, upload_time=datetime.now(), tags=None):
@@ -114,8 +121,8 @@ class MongoInterface:
             TAGS: tags,
         }
 
-        self.client.voice_clips.clips.insert_one(document)
-        self.client.voice_clips.identifiers.update_one(
+        self.db.clips.insert_one(document)
+        self.db.identifiers.update_one(
             {"_id": prefix_doc_id}, {"$set": {NEXT_ID: identifier_number + 1}}
         )
 
@@ -163,9 +170,7 @@ class MongoInterface:
             tags.append(tag)
             tags = sorted(list(set(tags)))
 
-            self.client.voice_clips.clips.update_one(
-                {"_id": file[ID]}, {"$set": {TAGS: tags}}
-            )
+            self.db.clips.update_one({"_id": file[ID]}, {"$set": {TAGS: tags}})
         self.refresh()
 
     def untag(self, references, tag):
@@ -175,20 +180,18 @@ class MongoInterface:
             tags.remove(tag)
             tags = sorted(list(set(tags)))
 
-            self.client.voice_clips.clips.update_one(
-                {"_id": file[ID]}, {"$set": {TAGS: tags}}
-            )
+            self.db.clips.update_one({"_id": file[ID]}, {"$set": {TAGS: tags}})
         self.refresh()
 
     def get_next_pending_command(self):
-        return self.client.voice_clips.pending_commands.find_one_and_update(
+        return self.db.pending_commands.find_one_and_update(
             {"status": "pending"},
             {"$set": {"status": "processing"}},
             sort=[("created_at", pymongo.ASCENDING), ("_id", pymongo.ASCENDING)],
         )
 
     def mark_command_done(self, command_id):
-        self.client.voice_clips.pending_commands.update_one(
+        self.db.pending_commands.update_one(
             {"_id": command_id}, {"$set": {"status": "done"}}
         )
 
@@ -214,10 +217,10 @@ class MongoInterface:
 def reset_mongo():
     mongo_interface = MongoInterface()
     mongo_interface.connect()
-    mongo_interface.client.voice_clips.clips.delete_many({})
+    mongo_interface.db.clips.delete_many({})
 
-    for identifier_mapping in mongo_interface.client.voice_clips.identifiers.find({}):
-        mongo_interface.client.voice_clips.identifiers.update_one(
+    for identifier_mapping in mongo_interface.db.identifiers.find({}):
+        mongo_interface.db.identifiers.update_one(
             {"_id": identifier_mapping[ID]}, {"$set": {NEXT_ID: 0}}
         )
 

@@ -1,7 +1,6 @@
 import base64
 import datetime as dt
 import json
-import math
 import os
 import subprocess as sp
 import time
@@ -9,6 +8,7 @@ import wave
 from pathlib import Path
 
 import requests
+from pmb_core.audio import transform
 
 from python_mumble_bot.bot.constants import BITRATE, DEFAULT_RECORDING_DIR, ROOT_CHANNEL
 from python_mumble_bot.bot.event import (
@@ -46,8 +46,8 @@ class EventManager:
 class PlaybackManager(EventManager):
     NOTES_TO_SEMITONES = {"C": 0, "D": 2, "E": 4, "F": 5, "G": 7, "A": 9, "B": 11}
 
-    RESAMPLE_FILTER = "aresample=48000*"
-    SETRATE_FILTER = "asetrate=48000/"
+    RESAMPLE_FILTER = transform.RESAMPLE_FILTER
+    SETRATE_FILTER = transform.SETRATE_FILTER
 
     def __init__(self, mumble, state_manager):
         self.mumble = mumble
@@ -82,7 +82,7 @@ class PlaybackManager(EventManager):
         f.write(wav)
         f.close()
 
-        pcm = self._transform_audio(
+        pcm = transform.transform_audio(
             file,
             self.RESAMPLE_FILTER,
             self.state_manager.get_volume(),
@@ -102,7 +102,7 @@ class PlaybackManager(EventManager):
             event.data, event.playback_speeds, event.semitone_shifts
         ):
             file = self.state_manager.find_audio_clip(ref)
-            pcm = self._transform_audio(
+            pcm = transform.transform_audio(
                 file,
                 pitch_filter,
                 self.state_manager.get_volume(),
@@ -180,7 +180,7 @@ class PlaybackManager(EventManager):
                     file_name = measure_voice_note_wav_file_format.format(
                         processing_dir, measure_number, voice, note_number
                     )
-                    self._transform_audio(
+                    transform.transform_audio(
                         file,
                         self.SETRATE_FILTER,
                         note_volume,
@@ -273,7 +273,7 @@ class PlaybackManager(EventManager):
         print(command)
         print("done")
 
-        pcm = self._transform_audio(
+        pcm = transform.transform_audio(
             output_file, self.RESAMPLE_FILTER, volume, 1, 1, desired_output="pcm"
         )
         self._play_sound(pcm)
@@ -286,77 +286,6 @@ class PlaybackManager(EventManager):
         command = ["sox"]
         [command.append(f) for f in files]
         return command
-
-    def _transform_audio(
-        self,
-        file,
-        pitch_filter,
-        volume,
-        speed,
-        shift,
-        desired_output="pcm",
-        output_file=None,
-    ):
-        filter = self._generate_filter(pitch_filter, volume, speed, shift)
-
-        if desired_output == "pcm":
-            return self._transform_as_pcm_data(file, filter)
-        elif desired_output == "wav":
-            return self._transform_as_wav(file, filter, output_file)
-
-    def _generate_filter(self, pitch_filter, volume, speed, shift):
-        shift_resample_multiplier = 2 ** (-shift / 12)
-        required_tempo = speed / 2 ** (shift / 12)
-
-        # Api limitations for speed change in range (0.5, 2).
-        # Can work around by concatenating speeds together, e.g, atempo=2.0,atempo=2.0 for 4x speed
-
-        if required_tempo < 0.5:
-            num_required = 1
-            while required_tempo < 0.5:
-                num_required = num_required * 2
-                required_tempo = math.sqrt(required_tempo)
-            required_tempo = round(required_tempo, 2)
-            tempo_filter = ",".join(
-                ["atempo=" + str(required_tempo) for i in range(0, num_required)]
-            )
-        elif required_tempo > 2:
-            num_required = 1
-            while required_tempo > 2:
-                num_required = num_required * 2
-                required_tempo = math.sqrt(required_tempo)
-            required_tempo = round(required_tempo, 2)
-            tempo_filter = ",".join(
-                ["atempo=" + str(required_tempo) for i in range(0, num_required)]
-            )
-        else:
-            tempo_filter = "".join(["atempo=", str(required_tempo)])
-
-        pitch_filter = "".join([pitch_filter, str(shift_resample_multiplier)])
-        volume_filter = "".join(["volume=", str(volume)])
-        filter = ",".join([tempo_filter, volume_filter, pitch_filter])
-
-        return filter
-
-    def _transform_as_pcm_data(self, file, filter):
-        encode_command = "ffmpeg -i {0} -filter_complex {1} -ac 1 -f s16le -".format(
-            file, filter
-        )
-        print(encode_command)
-        proc = sp.Popen(encode_command.split(" "), stdout=sp.PIPE, stderr=sp.PIPE)
-        out, err = proc.communicate()
-        print("FFMPEG RETURNCODE:", proc.returncode)
-        print("FFMPEG STDERR:", err.decode())
-        return out
-
-    def _transform_as_wav(self, input, filter, output):
-        filter = "{0},{1}".format(filter, "aresample=48000")
-        encode_command = "ffmpeg -i {0} -filter_complex {1} -y {2}".format(
-            input, filter, output
-        )
-
-        p = sp.Popen(encode_command.split(" "))
-        p.communicate()
 
 
 class TextMessageManager(EventManager):

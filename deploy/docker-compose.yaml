@@ -17,7 +17,9 @@ services:
       retries: 5
 
   pmb_bot:
-    build: ../bot
+    build:
+      context: ..
+      dockerfile: bot/Dockerfile
     container_name: pmb_bot
     restart: unless-stopped
     deploy:

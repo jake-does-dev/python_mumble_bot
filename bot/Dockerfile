@@ -7,11 +7,12 @@ ENV PYTHONUNBUFFERED=1
 ENV PIPENV_VENV_IN_PROJECT=1
 RUN apt-get update && apt-get install -y ffmpeg libopus0 sox && rm -rf /var/lib/apt/lists/*
 RUN pip install pipenv
-COPY Pipfile .
-COPY Pipfile.lock .
+COPY bot/Pipfile bot/Pipfile.lock ./
 RUN pipenv install --deploy --ignore-pipfile
 ENV PATH="/.venv/bin:/usr/local/bin:/usr/bin:/bin"
+COPY pmb_core/ /opt/pmb_core/
+RUN pipenv run pip install /opt/pmb_core
 WORKDIR /app
-COPY . .
+COPY bot/ ./
 ENTRYPOINT ["python", "-m", "python_mumble_bot"]
 CMD ["10"]

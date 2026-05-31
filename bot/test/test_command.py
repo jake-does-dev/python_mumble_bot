@@ -2,7 +2,7 @@ import os
 import sys
 from unittest import mock
 
-from python_mumble_bot.db.mongodb import MongoInterface
+from pmb_core.db.mongodb import MongoInterface
 
 sys.path.append(os.path.relpath("./python_mumble_bot"))
 

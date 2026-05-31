@@ -24,6 +24,7 @@ jobs:
         run: |
           pip install pipenv
           pipenv install --skip-lock --dev
+          pipenv run pip install -e ../pmb_core
 
       - run: pipenv run isort --recursive --diff .
       - run: pipenv run black --check .
