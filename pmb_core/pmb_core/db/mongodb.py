@@ -7,6 +7,7 @@ import pymongo
 from pmb_core.constants import (
     CREATION_TIME,
     DEFAULT_DATABASE,
+    DEFAULT_VOLUME,
     FILE,
     FILE_PREFIX,
     ID,
@@ -79,10 +80,15 @@ class MongoInterface:
 
     def set_volume(self, volume):
         self.volume = volume
-        self.db.playback_volume.update_one({}, {"$set": {"playback_volume": volume}})
+        self.db.playback_volume.update_one(
+            {}, {"$set": {"playback_volume": volume}}, upsert=True
+        )
 
     def get_volume(self):
         record = self.db.playback_volume.find_one({})
+        if record is None:
+            self.db.playback_volume.insert_one({"playback_volume": DEFAULT_VOLUME})
+            return DEFAULT_VOLUME
         return record["playback_volume"]
 
     def add_clip(self, file, upload_time=datetime.now(), tags=None):

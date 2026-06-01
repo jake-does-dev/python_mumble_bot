@@ -110,6 +110,17 @@ class DiscordBot(commands.Bot):
             text = message.replace("<b>", "**").replace("</b>", "**")
             await channel.send(text)
 
+    async def on_voice_state_update(self, member, before, after):
+        # When a human's voice state changes, leave if the bot is now alone in
+        # its channel (no non-bot members left).
+        if member.bot:
+            return
+        voice_client = member.guild.voice_client
+        if voice_client is None or not voice_client.is_connected():
+            return
+        if not any(not m.bot for m in voice_client.channel.members):
+            await voice_client.disconnect()
+
     @tasks.loop(seconds=0.5)
     async def poll_commands(self):
         for _ in range(20):
