@@ -53,6 +53,10 @@ services:
       MONGODB_USERNAME: ${MONGODB_USERNAME}
       MONGODB_PASSWORD: ${MONGODB_PASSWORD}
       JWT_SECRET_KEY: ${DISCORD_JWT_SECRET_KEY}
+      CLIP_ID_MODE: integer
+      VOICE_CONTROL_ENABLED: "true"
+      APP_TITLE: "Discord Bot"
+      NORMALIZE_UPLOADS: "true"
     volumes:
     - /tank/pmb/discord-audio:/app/audio
     ports:

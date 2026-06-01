@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -6,7 +7,7 @@ from fastapi.responses import FileResponse
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from app.limiter import limiter
-from app.routers import clips, commands, users
+from app.routers import clips, commands, users, voice
 from app.database import get_db
 
 PENDING_COMMANDS_TTL_SECONDS = 30 * 24 * 60 * 60  # 30 days
@@ -31,10 +32,17 @@ app.add_middleware(
 app.include_router(users.router)
 app.include_router(clips.router)
 app.include_router(commands.router)
+app.include_router(voice.router)
 
 @app.get("/health")
 def health():
     return {"status": "ok"}
+
+APP_TITLE = os.getenv("APP_TITLE", "Voice Clips")
+
+@app.get("/api/config")
+def config():
+    return {"title": APP_TITLE}
 
 FRONTEND_DIST = Path("frontend/dist")
 

@@ -18,7 +18,7 @@ def parse_speed(value):
         speed = float(value)
     except ValueError:
         speed = 1.0
-    return min(max(speed, 0.05), 4.0)
+    return min(max(speed, 0.5), 4.0)
 
 
 def parse_pitch(value):
@@ -75,6 +75,7 @@ class DiscordBot(commands.Bot):
         else:
             await self.tree.sync()
         self.poll_commands.start()
+        self.publish_voice_state.start()
 
     def get_player(self, voice_client):
         player = self.players.get(voice_client.guild.id)
@@ -102,6 +103,59 @@ class DiscordBot(commands.Bot):
                 return voice_client
         return None
 
+    def _target_guild(self):
+        if config.GUILD_ID:
+            return self.get_guild(config.GUILD_ID)
+        return self.guilds[0] if self.guilds else None
+
+    async def join_channel(self, channel_id):
+        if not channel_id:
+            return
+        channel = self.get_channel(int(channel_id))
+        if not isinstance(channel, discord.VoiceChannel):
+            log.warning("Join: %s is not a voice channel", channel_id)
+            return
+        # The bot must never sit in a channel alone — refuse to join one with
+        # no human members (on_voice_state_update only handles people leaving).
+        if not any(not m.bot for m in channel.members):
+            log.info("Join: %s has no human members; not joining", channel.name)
+            return
+        voice_client = channel.guild.voice_client
+        if voice_client is None:
+            await channel.connect()
+        elif voice_client.channel != channel:
+            await voice_client.move_to(channel)
+
+    async def _publish_voice_state(self):
+        guild = self._target_guild()
+        if guild is None:
+            return
+        channels = [
+            {
+                "id": str(c.id),
+                "name": c.name,
+                "users": sum(1 for m in c.members if not m.bot),
+            }
+            for c in guild.voice_channels
+        ]
+        voice_client = self.active_voice_client()
+        current = str(voice_client.channel.id) if voice_client else None
+        await asyncio.to_thread(
+            lambda: self.mongo.db.voice_state.update_one(
+                {"_id": "state"},
+                {"$set": {"channels": channels, "current_channel_id": current}},
+                upsert=True,
+            )
+        )
+
+    @tasks.loop(seconds=10)
+    async def publish_voice_state(self):
+        await self._publish_voice_state()
+
+    @publish_voice_state.before_loop
+    async def _before_publish(self):
+        await self.wait_until_ready()
+
     async def announce(self, message):
         if not config.ANNOUNCE_CHANNEL_ID or not message:
             return
@@ -111,17 +165,17 @@ class DiscordBot(commands.Bot):
             await channel.send(text)
 
     async def on_voice_state_update(self, member, before, after):
-        # When a human's voice state changes, leave if the bot is now alone in
-        # its channel (no non-bot members left).
+        # When a human's voice state changes: leave if the bot is now alone in
+        # its channel, then republish so per-channel user counts stay fresh.
         if member.bot:
             return
         voice_client = member.guild.voice_client
-        if voice_client is None or not voice_client.is_connected():
-            return
-        if not any(not m.bot for m in voice_client.channel.members):
-            await voice_client.disconnect()
+        if voice_client is not None and voice_client.is_connected():
+            if not any(not m.bot for m in voice_client.channel.members):
+                await voice_client.disconnect()
+        await self._publish_voice_state()
 
-    @tasks.loop(seconds=0.5)
+    @tasks.loop(seconds=0.1)
     async def poll_commands(self):
         for _ in range(20):
             command = await asyncio.to_thread(self.mongo.get_next_pending_command)
@@ -140,6 +194,16 @@ class DiscordBot(commands.Bot):
         cmd_type = command.get("type", "play")
         if cmd_type == "announce":
             await self.announce(command.get("message", ""))
+            return
+        if cmd_type == "join":
+            await self.join_channel(command.get("channel_id"))
+            await self._publish_voice_state()
+            return
+        if cmd_type == "leave":
+            voice_client = self.active_voice_client()
+            if voice_client is not None:
+                await voice_client.disconnect()
+            await self._publish_voice_state()
             return
 
         voice_client = self.active_voice_client()

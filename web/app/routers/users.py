@@ -1,3 +1,4 @@
+import os
 from fastapi import APIRouter, HTTPException, Depends, Request
 from fastapi.security import OAuth2PasswordRequestForm
 from app.auth import create_access_token, get_current_user
@@ -5,6 +6,12 @@ from app.services.users import UsersService
 from app.models.users import Token, UserCreate
 from app.limiter import limiter
 from pydantic import BaseModel
+
+VOICE_CONTROL_ENABLED = os.getenv("VOICE_CONTROL_ENABLED", "").lower() in (
+    "1",
+    "true",
+    "yes",
+)
 
 router = APIRouter(prefix="/api/users", tags=["users"])
 
@@ -32,7 +39,11 @@ def register(user: UserCreate, current_user: str = Depends(get_current_user)):
 @router.get("/me")
 def me(current_user: str = Depends(get_current_user)):
     users_service = UsersService()
-    return {"username": current_user, "is_admin": users_service.is_admin(current_user)}
+    return {
+        "username": current_user,
+        "is_admin": users_service.is_admin(current_user),
+        "voice_control": VOICE_CONTROL_ENABLED,
+    }
 
 @router.post("/change-password")
 def change_password(body: ChangePassword, current_user: str = Depends(get_current_user)):
