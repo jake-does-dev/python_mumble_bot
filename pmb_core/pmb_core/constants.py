@@ -19,3 +19,7 @@ MONGODB_DATABASE = "MONGODB_DATABASE"
 
 # Default database name when MONGODB_DATABASE is unset (preserves Mumble behaviour)
 DEFAULT_DATABASE = "voice_clips"
+
+# Default playback volume used when the database has no playback_volume document
+# yet (e.g. a brand-new, empty clip library).
+DEFAULT_VOLUME = 1.0
