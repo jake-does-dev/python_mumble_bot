@@ -11,7 +11,7 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: bot
+        working-directory: mumble_bot
     steps:
       - uses: actions/checkout@v4
 
