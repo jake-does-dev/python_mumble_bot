@@ -1,11 +1,13 @@
 import io
 import os
 import re
+import subprocess
 import wave
 from datetime import datetime
 from pathlib import Path
 from typing import List, Optional
 
+import pymongo
 from fastapi import HTTPException
 
 from app.database import get_db
@@ -14,6 +16,30 @@ AUDIO_DIR = Path(os.getenv("AUDIO_DIR", "/app/audio"))
 MAX_SIZE_BYTES = 50 * 1024 * 1024  # 50 MB
 MAX_DURATION_SECONDS = 10
 _NAME_RE = re.compile(r"^[a-zA-Z0-9_\-]+$")
+
+# "prefix" (default) keeps the Mumble-style prefixed IDs (oy69, ja12, ...).
+# "integer" generates plain incrementing integers (1, 2, 3, ...) — used by the
+# Discord stack for short, easy-to-type IDs.
+CLIP_ID_MODE = os.getenv("CLIP_ID_MODE", "prefix")
+
+# When enabled, uploaded clips are loudness-normalised once (EBU R128) so no
+# single clip can be wildly louder than the rest. Done at upload so playback
+# stays instant (no per-play processing).
+NORMALIZE_UPLOADS = os.getenv("NORMALIZE_UPLOADS", "").lower() in ("1", "true", "yes")
+LOUDNORM_TARGET = "loudnorm=I=-16:TP=-1.5:LRA=11"
+
+
+def _normalize_loudness(path: Path) -> None:
+    tmp = path.with_name(".norm_" + path.name)
+    result = subprocess.run(
+        ["ffmpeg", "-y", "-i", str(path), "-af", LOUDNORM_TARGET, "-ar", "48000", str(tmp)],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+    if result.returncode == 0 and tmp.exists():
+        os.replace(tmp, path)
+    elif tmp.exists():
+        tmp.unlink()
 
 _PREFIX_MAP = {
     "daryl_": "dm",
@@ -104,6 +130,9 @@ class ClipsService:
             raise HTTPException(409, f"File '{filename}' already exists on disk")
         dest.write_bytes(contents)
 
+        if NORMALIZE_UPLOADS:
+            _normalize_loudness(dest)
+
         doc = {
             "identifier": identifier,
             "name": name,
@@ -129,6 +158,15 @@ class ClipsService:
         self.db.favourites.update_many({}, {"$pull": {"clips": identifier}})
 
     def _next_identifier(self, name: str) -> str:
+        if CLIP_ID_MODE == "integer":
+            doc = self.db.counters.find_one_and_update(
+                {"_id": "clip_id"},
+                {"$inc": {"seq": 1}},
+                upsert=True,
+                return_document=pymongo.ReturnDocument.AFTER,
+            )
+            return str(doc["seq"])
+
         file_prefix = "generic"
         id_prefix = ""
         for fp, ip in _PREFIX_MAP.items():

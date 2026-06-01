@@ -15,7 +15,7 @@ class CommandsService:
     def get_history(self) -> list:
         commands = list(
             self.db.pending_commands.find(
-                {"status": "done", "type": {"$ne": "announce"}},
+                {"status": "done", "type": {"$nin": ["announce", "join", "leave"]}},
                 sort=[("created_at", pymongo.DESCENDING)],
                 limit=HISTORY_LIMIT,
             )
@@ -80,6 +80,27 @@ class CommandsService:
                 "speed": item.get("speed", 1.0),
             })
         self.db.pending_commands.insert_many(docs)
+
+    def enqueue_join(self, channel_id: str, requested_by: str) -> None:
+        self.db.pending_commands.insert_one(
+            {
+                "type": "join",
+                "channel_id": channel_id,
+                "requested_by": requested_by,
+                "status": "pending",
+                "created_at": datetime.utcnow(),
+            }
+        )
+
+    def enqueue_leave(self, requested_by: str) -> None:
+        self.db.pending_commands.insert_one(
+            {
+                "type": "leave",
+                "requested_by": requested_by,
+                "status": "pending",
+                "created_at": datetime.utcnow(),
+            }
+        )
 
     def get_next_pending(self) -> Optional[dict]:
         return self.db.pending_commands.find_one({"status": "pending"})

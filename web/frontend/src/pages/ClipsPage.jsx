@@ -5,6 +5,7 @@ import api from '../api'
 import ClipCard from '../components/ClipCard'
 import UploadPanel from '../components/UploadPanel'
 import QueuePanel from '../components/QueuePanel'
+import VoicePanel from '../components/VoicePanel'
 import styles from './ClipsPage.module.css'
 
 const newId = () => Date.now().toString(36) + Math.random().toString(36).slice(2)
@@ -42,6 +43,7 @@ export default function ClipsPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [isAdmin, setIsAdmin] = useState(false)
+  const [voiceControl, setVoiceControl] = useState(false)
 
   const [search, setSearch] = useState('')
   const [activeTag, setActiveTag] = useState(null)
@@ -78,6 +80,7 @@ export default function ClipsPage() {
         setClips(clipsRes.data)
         setTags(tagsRes.data)
         setIsAdmin(meRes.data.is_admin)
+        setVoiceControl(meRes.data.voice_control)
       })
       .catch(err => {
         if (err.response?.status === 401) {
@@ -288,6 +291,7 @@ export default function ClipsPage() {
                 onUploaded={handleUploaded}
               />
             )}
+            {voiceControl && <VoicePanel />}
             <div className={styles.filters}>
               <button
                 className={`${styles.filterBtn} ${!activeTag && !favouritesOnly ? styles.active : ''}`}

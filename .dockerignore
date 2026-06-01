@@ -1,7 +1,13 @@
-# Ignore everything
-**
-
-# ... except for dependencies and source
-!Pipfile
-!Pipfile.lock
-!python_mumble_bot
+# Build contexts for the bot images are the repo root, so exclude the heavy
+# and irrelevant paths from what Docker sends as build context.
+.git
+**/__pycache__
+**/*.pyc
+**/.pytest_cache
+**/.mypy_cache
+.venv
+**/.venv
+node_modules
+**/node_modules
+web/frontend/dist
+deploy/.env

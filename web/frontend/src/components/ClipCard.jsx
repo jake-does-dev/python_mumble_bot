@@ -3,7 +3,7 @@ import styles from './ClipCard.module.css'
 
 const PITCH_MIN = -12
 const PITCH_MAX = 12
-const SPEED_MIN = 0.05
+const SPEED_MIN = 0.5
 const SPEED_MAX = 4
 const SPEED_SLIDER_STEPS = 1000
 const SPEED_SLIDER_MID = SPEED_SLIDER_STEPS / 2

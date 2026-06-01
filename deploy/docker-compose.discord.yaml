@@ -1,78 +1,82 @@
+name: pmb-discord
+
 services:
-  pmb_mongo:
+  disc_mongo:
     image: mongo:7
-    container_name: pmb_mongo
+    container_name: disc_mongo
     restart: unless-stopped
     environment:
       MONGO_INITDB_ROOT_USERNAME: ${MONGODB_USERNAME}
       MONGO_INITDB_ROOT_PASSWORD: ${MONGODB_PASSWORD}
     volumes:
-    - /tank/pmb/data/mongo:/data/db
+    - /tank/pmb/data/discord-mongo:/data/db
     ports:
-      - "27017:27017"
+      - "27018:27017"
     healthcheck:
       test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
       interval: 5s
       timeout: 5s
       retries: 5
 
-  pmb_bot:
+  disc_bot:
     build:
       context: ..
-      dockerfile: mumble_bot/Dockerfile
-    container_name: pmb_bot
+      dockerfile: discord_bot/Dockerfile
+    container_name: disc_bot
     restart: unless-stopped
     deploy:
       restart_policy:
         condition: any
         delay: 10s
     depends_on:
-      pmb_mongo:
+      disc_mongo:
         condition: service_healthy
     environment:
-      MONGODB_HOST: pmb_mongo
+      MONGODB_HOST: disc_mongo
       MONGODB_USERNAME: ${MONGODB_USERNAME}
       MONGODB_PASSWORD: ${MONGODB_PASSWORD}
-      MUMBLE_SERVER_HOST: ${MUMBLE_SERVER_HOST}
-      MUMBLE_SERVER_USERNAME: ${MUMBLE_SERVER_USERNAME}
-      MUMBLE_SERVER_PASSWORD: ${MUMBLE_SERVER_PASSWORD}
-      MUMBLE_SERVER_ROOT_CHANNEL: ${MUMBLE_SERVER_ROOT_CHANNEL}
+      DISCORD_BOT_TOKEN: ${DISCORD_BOT_TOKEN}
+      DISCORD_GUILD_ID: ${DISCORD_GUILD_ID}
+      DISCORD_ANNOUNCE_CHANNEL_ID: ${DISCORD_ANNOUNCE_CHANNEL_ID}
     volumes:
-    - /tank/pmb/audio:/app/audio
+    - /tank/pmb/discord-audio:/app/audio
 
-  pmb_web:
+  disc_web:
     build: ../web
-    container_name: pmb_web
+    container_name: disc_web
     restart: unless-stopped
     depends_on:
-      pmb_mongo:
+      disc_mongo:
         condition: service_healthy
     environment:
-      MONGODB_HOST: pmb_mongo
+      MONGODB_HOST: disc_mongo
       MONGODB_USERNAME: ${MONGODB_USERNAME}
       MONGODB_PASSWORD: ${MONGODB_PASSWORD}
-      JWT_SECRET_KEY: ${JWT_SECRET_KEY}
-      APP_TITLE: "Mumble Bot"
+      JWT_SECRET_KEY: ${DISCORD_JWT_SECRET_KEY}
+      CLIP_ID_MODE: integer
+      VOICE_CONTROL_ENABLED: "true"
+      APP_TITLE: "Discord Bot"
+      NORMALIZE_UPLOADS: "true"
     volumes:
-    - /tank/pmb/audio:/app/audio
+    - /tank/pmb/discord-audio:/app/audio
     ports:
-      - "8001:8000"
+      - "8002:8000"
 
-  pmb_tailscale:
+  disc_tailscale:
     image: tailscale/tailscale:latest
-    container_name: pmb_tailscale
-    hostname: pmb
+    container_name: disc_tailscale
+    hostname: pmb-discord
     restart: unless-stopped
     depends_on:
-      - pmb_web
+      - disc_web
     environment:
-      TS_AUTHKEY: ${TAILSCALE_AUTHKEY}
+      TS_AUTHKEY: ${DISCORD_TAILSCALE_AUTHKEY}
       TS_EXTRA_ARGS: --advertise-tags=tag:container
       TS_SERVE_CONFIG: /config/serve.json
       TS_STATE_DIR: /var/lib/tailscale
     volumes:
-      - /tank/pmb/data/tailscale:/var/lib/tailscale
-      - ./tailscale-serve.json:/config/serve.json:ro
+      - /tank/pmb/data/discord-tailscale:/var/lib/tailscale
+      - ./tailscale-serve.discord.json:/config/serve.json:ro
       - /dev/net/tun:/dev/net/tun
     cap_add:
       - NET_ADMIN

@@ -11,7 +11,7 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: bot
+        working-directory: mumble_bot
     steps:
       - uses: actions/checkout@v4
 
@@ -24,6 +24,7 @@ jobs:
         run: |
           pip install pipenv
           pipenv install --skip-lock --dev
+          pipenv run pip install ../pmb_core
 
       - run: pipenv run isort --recursive --diff .
       - run: pipenv run black --check .

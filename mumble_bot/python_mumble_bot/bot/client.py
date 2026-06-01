@@ -2,6 +2,7 @@ import os
 import time
 
 import pymumble_py3 as pymumble
+from pmb_core.db.mongodb import MongoInterface
 
 from python_mumble_bot.bot.api_wrapper import MumbleWrapper
 from python_mumble_bot.bot.command import CommandResolver, RefreshCommand
@@ -19,7 +20,6 @@ from python_mumble_bot.bot.manager import (
     StateManager,
     TextMessageManager,
 )
-from python_mumble_bot.db.mongodb import MongoInterface
 
 
 def connect():
