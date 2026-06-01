@@ -1,3 +1,4 @@
+import time
 from typing import List
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -8,6 +9,10 @@ from app.services.clips import ClipsService
 from app.services.commands import CommandsService
 
 router = APIRouter(prefix="/api/commands", tags=["commands"])
+
+# Per-user cooldown between queue plays (in-process; single uvicorn worker).
+QUEUE_COOLDOWN_SECONDS = 30
+_last_queue_play = {}
 
 
 class PlayOptions(BaseModel):
@@ -54,6 +59,15 @@ def play_clip(
 
 @router.post("/play-queue")
 def play_queue(body: PlayQueueRequest, current_user: str = Depends(get_current_user)):
+    now = time.monotonic()
+    elapsed = now - _last_queue_play.get(current_user, 0)
+    if elapsed < QUEUE_COOLDOWN_SECONDS:
+        remaining = int(QUEUE_COOLDOWN_SECONDS - elapsed) + 1
+        raise HTTPException(
+            status_code=429,
+            detail=f"Wait {remaining}s before playing another queue",
+        )
+
     if not body.items:
         raise HTTPException(status_code=400, detail="Queue is empty")
 
@@ -75,4 +89,5 @@ def play_queue(body: PlayQueueRequest, current_user: str = Depends(get_current_u
         )
 
     CommandsService().enqueue_queue(resolved, current_user, body.queue_name)
+    _last_queue_play[current_user] = now
     return {"message": f"Queued {len(resolved)} clips"}

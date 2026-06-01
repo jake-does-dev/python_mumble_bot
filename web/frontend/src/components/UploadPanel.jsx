@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import api from '../api'
 import styles from './UploadPanel.module.css'
 
@@ -12,6 +12,11 @@ export default function UploadPanel({ onClose, onUploaded }) {
   const [tags, setTags] = useState('')
   const [uploading, setUploading] = useState(false)
   const [error, setError] = useState(null)
+  const [previewUrl, setPreviewUrl] = useState(null)
+
+  useEffect(() => {
+    return () => { if (previewUrl) URL.revokeObjectURL(previewUrl) }
+  }, [previewUrl])
 
   function handleFileChange(e) {
     const f = e.target.files[0]
@@ -20,6 +25,8 @@ export default function UploadPanel({ onClose, onUploaded }) {
     setError(null)
     const stem = f.name.replace(/\.[^.]+$/, '')
     setName(stem)
+    if (previewUrl) URL.revokeObjectURL(previewUrl)
+    setPreviewUrl(URL.createObjectURL(f))
   }
 
   async function handleSubmit(e) {
@@ -99,6 +106,11 @@ export default function UploadPanel({ onClose, onUploaded }) {
           </label>
         </div>
       </div>
+      {previewUrl && (
+        <audio className={styles.preview} controls src={previewUrl}>
+          Your browser does not support audio preview.
+        </audio>
+      )}
       {error && <p className={styles.error}>{error}</p>}
       <div className={styles.actions}>
         <button type="button" className={styles.cancel} onClick={onClose} disabled={uploading}>

@@ -10,7 +10,7 @@ export default function QueuePanel({
   queues, activeQueueId, onSelectQueue,
   onCreateQueue, onDeleteQueue, onRenameQueue,
   onRemoveItem, onMoveItem, onPlayQueue, onClearQueue,
-  playingQueue,
+  playingQueue, cooldownRemaining = 0,
 }) {
   const [creating, setCreating] = useState(false)
   const [createName, setCreateName] = useState('')
@@ -123,8 +123,8 @@ export default function QueuePanel({
       {active && active.items.length > 0 && (
         <div className={styles.footer}>
           <button className={styles.clearBtn} onClick={() => onClearQueue(activeQueueId)}>Clear</button>
-          <button className={styles.playBtn} onClick={() => onPlayQueue(activeQueueId)} disabled={playingQueue}>
-            {playingQueue ? 'Playing…' : `▶ Play (${active.items.length})`}
+          <button className={styles.playBtn} onClick={() => onPlayQueue(activeQueueId)} disabled={playingQueue || cooldownRemaining > 0}>
+            {playingQueue ? 'Playing…' : cooldownRemaining > 0 ? `Wait ${cooldownRemaining}s` : `▶ Play (${active.items.length})`}
           </button>
         </div>
       )}

@@ -98,7 +98,12 @@ class ClipsService:
         return sorted(tags)
 
     def upload_clip(
-        self, name: str, ext: str, contents: bytes, tags: List[str]
+        self,
+        name: str,
+        ext: str,
+        contents: bytes,
+        tags: List[str],
+        uploaded_by: Optional[str] = None,
     ) -> dict:
         if not _NAME_RE.match(name):
             raise HTTPException(
@@ -139,11 +144,62 @@ class ClipsService:
             "file": filename,
             "creation_time": datetime.utcnow(),
             "tags": tags,
+            "uploaded_by": uploaded_by,
         }
         self.db.clips.insert_one(doc)
         doc.pop("_id", None)
 
         return doc
+
+    def update_clip(
+        self,
+        identifier: str,
+        current_user: str,
+        is_admin: bool,
+        name: Optional[str] = None,
+        tags: Optional[List[str]] = None,
+    ) -> dict:
+        clip = self.db.clips.find_one({"identifier": identifier})
+        if not clip:
+            raise HTTPException(404, f"Clip '{identifier}' not found")
+        if not (is_admin or clip.get("uploaded_by") == current_user):
+            raise HTTPException(403, "You can only edit clips you uploaded")
+
+        updates = {}
+
+        if tags is not None:
+            updates["tags"] = sorted({t.strip() for t in tags if t.strip()})
+
+        if name is not None and name != clip["name"]:
+            if not _NAME_RE.match(name):
+                raise HTTPException(
+                    400,
+                    "Name may only contain letters, numbers, underscores, and hyphens",
+                )
+            if self.db.clips.find_one(
+                {"name": name, "identifier": {"$ne": identifier}}
+            ):
+                raise HTTPException(409, f"A clip named '{name}' already exists")
+
+            ext = Path(clip["file"]).suffix
+            new_filename = f"{name}{ext}"
+            new_path = AUDIO_DIR / new_filename
+            if new_path.exists():
+                raise HTTPException(
+                    409, f"File '{new_filename}' already exists on disk"
+                )
+            old_path = AUDIO_DIR / clip["file"]
+            if old_path.exists():
+                old_path.rename(new_path)
+            updates["name"] = name
+            updates["file"] = new_filename
+
+        if updates:
+            self.db.clips.update_one(
+                {"identifier": identifier}, {"$set": updates}
+            )
+
+        return self.db.clips.find_one({"identifier": identifier}, {"_id": 0})
 
     def delete_clip(self, identifier: str) -> None:
         clip = self.db.clips.find_one({"identifier": identifier})
