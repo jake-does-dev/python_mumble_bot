@@ -44,6 +44,9 @@ export default function ClipsPage() {
   const [error, setError] = useState(null)
   const [isAdmin, setIsAdmin] = useState(false)
   const [voiceControl, setVoiceControl] = useState(false)
+  const [username, setUsername] = useState(null)
+  const [queueCooldownUntil, setQueueCooldownUntil] = useState(0)
+  const [now, setNow] = useState(Date.now())
 
   const [search, setSearch] = useState('')
   const [activeTag, setActiveTag] = useState(null)
@@ -81,6 +84,7 @@ export default function ClipsPage() {
         setTags(tagsRes.data)
         setIsAdmin(meRes.data.is_admin)
         setVoiceControl(meRes.data.voice_control)
+        setUsername(meRes.data.username)
       })
       .catch(err => {
         if (err.response?.status === 401) {
@@ -100,6 +104,17 @@ export default function ClipsPage() {
     return () => clearInterval(id)
   }, [fetchHistory])
 
+  useEffect(() => {
+    if (queueCooldownUntil <= Date.now()) return
+    const id = setInterval(() => {
+      setNow(Date.now())
+      if (Date.now() >= queueCooldownUntil) clearInterval(id)
+    }, 1000)
+    return () => clearInterval(id)
+  }, [queueCooldownUntil])
+
+  const cooldownRemaining = Math.max(0, Math.ceil((queueCooldownUntil - now) / 1000))
+
   const filtered = useMemo(() => {
     const q = search.toLowerCase()
     return clips
@@ -110,6 +125,7 @@ export default function ClipsPage() {
         return true
       })
       .sort((a, b) => {
+        if (sort === 'top') return (b.score ?? 0) - (a.score ?? 0)
         if (sort === 'newest') return new Date(b.creation_time) - new Date(a.creation_time)
         if (sort === 'oldest') return new Date(a.creation_time) - new Date(b.creation_time)
         return a.name.localeCompare(b.name)
@@ -147,6 +163,26 @@ export default function ClipsPage() {
     api.delete(`/api/clips/${identifier}`).catch(() => {
       api.get('/api/clips/').then(res => setClips(res.data)).catch(() => {})
     })
+  }
+
+  async function handleEdit(identifier, { name, tags: newTags }) {
+    const res = await api.patch(`/api/clips/${identifier}`, { name, tags: newTags })
+    setClips(prev => prev.map(c =>
+      c.identifier === identifier ? { ...c, ...res.data } : c
+    ))
+    api.get('/api/clips/tags').then(r => setTags(r.data)).catch(() => {})
+  }
+
+  function handleVote(identifier, value) {
+    api.post(`/api/clips/${identifier}/vote`, { value })
+      .then(res => {
+        setClips(prev => prev.map(c =>
+          c.identifier === identifier
+            ? { ...c, score: res.data.score, my_vote: res.data.my_vote }
+            : c
+        ))
+      })
+      .catch(() => {})
   }
 
   function saveQueues(next) {
@@ -223,6 +259,7 @@ export default function ClipsPage() {
   async function handlePlayQueue(queueId) {
     const q = queues.find(q => q.id === queueId)
     if (!q || q.items.length === 0) return
+    if (cooldownRemaining > 0) return
     setPlayingQueue(true)
     try {
       await api.post('/api/commands/play-queue', {
@@ -234,7 +271,14 @@ export default function ClipsPage() {
           speed: item.speed,
         })),
       })
+      setQueueCooldownUntil(Date.now() + 30000)
       setTimeout(fetchHistory, 1500)
+    } catch (err) {
+      if (err.response?.status === 429) {
+        const m = /(\d+)/.exec(err.response.data?.detail || '')
+        const secs = m ? Number(m[1]) : 30
+        setQueueCooldownUntil(Date.now() + secs * 1000)
+      }
     } finally {
       setPlayingQueue(false)
     }
@@ -272,6 +316,7 @@ export default function ClipsPage() {
                 <button className={`${styles.viewBtn} ${sort === 'alpha'   ? styles.active : ''}`} onClick={() => handleSetSort('alpha')}  title="Sort A→Z">A→Z</button>
                 <button className={`${styles.viewBtn} ${sort === 'newest'  ? styles.active : ''}`} onClick={() => handleSetSort('newest')} title="Sort newest first">Date ↓</button>
                 <button className={`${styles.viewBtn} ${sort === 'oldest'  ? styles.active : ''}`} onClick={() => handleSetSort('oldest')} title="Sort oldest first">Date ↑</button>
+                <button className={`${styles.viewBtn} ${sort === 'top'     ? styles.active : ''}`} onClick={() => handleSetSort('top')}    title="Sort by votes">★ Top</button>
               </div>
               <div className={styles.viewToggle}>
                 <button className={`${styles.viewBtn} ${view === 'grid' ? styles.active : ''}`} onClick={() => handleSetView('grid')} title="Grid view">⊞</button>
@@ -333,6 +378,9 @@ export default function ClipsPage() {
                       onPlay={handlePlay}
                       onDelete={handleDelete}
                       onAddToQueue={handleAddToQueue}
+                      onEdit={handleEdit}
+                      onVote={handleVote}
+                      username={username}
                       playing={playingId === clip.identifier}
                       isAdmin={isAdmin}
                       view={view}
@@ -375,6 +423,7 @@ export default function ClipsPage() {
               onPlayQueue={handlePlayQueue}
               onClearQueue={handleClearQueue}
               playingQueue={playingQueue}
+              cooldownRemaining={cooldownRemaining}
             />
           ) : (
             <>

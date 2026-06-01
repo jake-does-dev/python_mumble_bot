@@ -50,11 +50,37 @@ function pitchLabel(v) {
   return `${v > 0 ? '+' : ''}${v} st`
 }
 
-export default function ClipCard({ clip, onToggleFavourite, onPlay, onDelete, onAddToQueue, playing, isAdmin = false, view = 'grid' }) {
+export default function ClipCard({ clip, onToggleFavourite, onPlay, onDelete, onAddToQueue, onEdit, onVote, username = null, playing, isAdmin = false, view = 'grid' }) {
   const [pitch, setPitch] = useState(() => loadSetting(clip.identifier, 'pitch', 0))
   const [speed, setSpeed] = useState(() => loadSetting(clip.identifier, 'speed', 1))
   const [confirmDelete, setConfirmDelete] = useState(false)
+  const [editing, setEditing] = useState(false)
+  const [editName, setEditName] = useState(clip.name)
+  const [editTags, setEditTags] = useState((clip.tags || []).join(', '))
+  const [editError, setEditError] = useState(null)
   const nameInnerRef = useRef(null)
+
+  const canEdit = isAdmin || (clip.uploaded_by && clip.uploaded_by === username)
+
+  function startEdit() {
+    setEditName(clip.name)
+    setEditTags((clip.tags || []).join(', '))
+    setEditError(null)
+    setEditing(true)
+  }
+
+  async function saveEdit() {
+    setEditError(null)
+    try {
+      await onEdit(clip.identifier, {
+        name: editName.trim(),
+        tags: editTags.split(',').map(t => t.trim()).filter(Boolean),
+      })
+      setEditing(false)
+    } catch (err) {
+      setEditError(err.response?.data?.detail || 'Update failed')
+    }
+  }
 
   useEffect(() => {
     const inner = nameInnerRef.current
@@ -73,26 +99,64 @@ export default function ClipCard({ clip, onToggleFavourite, onPlay, onDelete, on
     const ro = new ResizeObserver(update)
     ro.observe(inner.parentElement)
     return () => ro.disconnect()
-  }, [clip.name])
+  }, [clip.name, editing])
 
   return (
     <div className={`${styles.card} ${view === 'list' ? styles.cardList : ''}`}>
-      <div className={styles.info}>
-        <div className={styles.nameRow}>
-          <span className={styles.name}>
-            <span className={styles.nameInner} ref={nameInnerRef}>{clip.name}</span>
-          </span>
-          <span className={styles.identifier}>{clip.identifier}</span>
+      {editing ? (
+        <div className={styles.editForm}>
+          <input
+            className={styles.editInput}
+            value={editName}
+            onChange={e => setEditName(e.target.value)}
+            placeholder="name"
+            spellCheck={false}
+          />
+          <input
+            className={styles.editInput}
+            value={editTags}
+            onChange={e => setEditTags(e.target.value)}
+            placeholder="tags, comma, separated"
+          />
+          {editError && <span className={styles.editError}>{editError}</span>}
+          <div className={styles.editActions}>
+            <button type="button" className={styles.editCancel} onClick={() => setEditing(false)}>Cancel</button>
+            <button type="button" className={styles.editSave} onClick={saveEdit}>Save</button>
+          </div>
         </div>
-        <div className={styles.tags}>
-          {clip.tags.map(tag => (
-            <span key={tag} className={styles.tag}>{tag}</span>
-          ))}
+      ) : (
+        <div className={styles.info}>
+          <div className={styles.nameRow}>
+            <span className={styles.name}>
+              <span className={styles.nameInner} ref={nameInnerRef}>{clip.name}</span>
+            </span>
+            <span className={styles.identifier}>{clip.identifier}</span>
+          </div>
+          <div className={styles.tags}>
+            {clip.tags.map(tag => (
+              <span key={tag} className={styles.tag}>{tag}</span>
+            ))}
+          </div>
+          <div className={styles.metaRow}>
+            <div className={styles.votes}>
+              <button
+                className={`${styles.voteBtn} ${clip.my_vote === 1 ? styles.voteUp : ''}`}
+                onClick={() => onVote(clip.identifier, clip.my_vote === 1 ? 0 : 1)}
+                title="Upvote"
+              >▲</button>
+              <span className={styles.voteScore}>{clip.score ?? 0}</span>
+              <button
+                className={`${styles.voteBtn} ${clip.my_vote === -1 ? styles.voteDown : ''}`}
+                onClick={() => onVote(clip.identifier, clip.my_vote === -1 ? 0 : -1)}
+                title="Downvote"
+              >▼</button>
+            </div>
+            {clip.creation_time && (
+              <span className={styles.date}>{formatDate(clip.creation_time)}</span>
+            )}
+          </div>
         </div>
-        {clip.creation_time && (
-          <div className={styles.date}>{formatDate(clip.creation_time)}</div>
-        )}
-      </div>
+      )}
 
       <div className={styles.sliders}>
         <div className={styles.sliderRow}>
@@ -122,6 +186,9 @@ export default function ClipCard({ clip, onToggleFavourite, onPlay, onDelete, on
       </div>
 
       <div className={styles.actions}>
+        {canEdit && !editing && (
+          <button className={styles.edit} onClick={startEdit} title="Edit name & tags">✎</button>
+        )}
         {isAdmin && (
           confirmDelete
             ? <>

@@ -157,7 +157,8 @@
 .queue,
 .star,
 .reset,
-.play {
+.play,
+.edit {
   border: 1px solid var(--border);
   border-radius: 6px;
   background: transparent;
@@ -166,6 +167,12 @@
   padding: 4px 10px;
   font-size: 1rem;
   transition: background 0.15s, border-color 0.15s;
+}
+
+.edit:hover {
+  background: var(--accent-bg);
+  border-color: var(--accent-border);
+  color: var(--accent);
 }
 
 .del:hover {
@@ -210,4 +217,111 @@
 .playing {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+.metaRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-top: 2px;
+}
+
+.votes {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.voteBtn {
+  border: none;
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+  font-size: 0.8rem;
+  line-height: 1;
+  padding: 2px 4px;
+  border-radius: 4px;
+  transition: color 0.15s, background 0.15s;
+}
+
+.voteBtn:hover {
+  color: var(--text-h);
+}
+
+.voteUp {
+  color: #22c55e;
+}
+
+.voteDown {
+  color: #ef4444;
+}
+
+.voteScore {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--text-h);
+  min-width: 1.5rem;
+  text-align: center;
+}
+
+.editForm {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.editInput {
+  padding: 0.35rem 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--code-bg);
+  color: var(--text-h);
+  font-size: 0.875rem;
+  outline: none;
+  box-sizing: border-box;
+  width: 100%;
+}
+
+.editInput:focus {
+  border-color: var(--accent);
+}
+
+.editError {
+  font-size: 0.75rem;
+  color: #ef4444;
+}
+
+.editActions {
+  display: flex;
+  gap: 0.4rem;
+  justify-content: flex-end;
+}
+
+.editCancel,
+.editSave {
+  padding: 3px 12px;
+  border-radius: 6px;
+  font-size: 0.8rem;
+  cursor: pointer;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text);
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+
+.editCancel:hover {
+  border-color: var(--text);
+  color: var(--text-h);
+}
+
+.editSave {
+  border-color: var(--accent-border);
+  background: var(--accent-bg);
+  color: var(--accent);
+}
+
+.editSave:hover {
+  background: var(--accent);
+  color: #fff;
 }
