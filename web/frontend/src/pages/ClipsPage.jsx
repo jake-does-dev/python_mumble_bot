@@ -121,7 +121,7 @@ export default function ClipsPage() {
       .filter(clip => {
         if (favouritesOnly && !clip.is_favourite) return false
         if (activeTag && !clip.tags.includes(activeTag)) return false
-        if (q && !clip.name.toLowerCase().includes(q) && !clip.identifier.toLowerCase().includes(q)) return false
+        if (q && !clip.name.toLowerCase().includes(q) && !clip.identifier.toLowerCase().includes(q) && !clip.tags.some(t => t.toLowerCase().includes(q))) return false
         return true
       })
       .sort((a, b) => {
