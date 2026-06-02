@@ -95,7 +95,9 @@ class DiscordBot(commands.Bot):
             {"name": ref}
         )
 
-    async def play_file(self, voice_client, file_name, speed, shift):
+    async def play_file(
+        self, voice_client, file_name, speed, shift, interrupt=False, voice_key=None
+    ):
         volume = await asyncio.to_thread(self.mongo.get_volume)
         t = time.monotonic()
         source = playback.build_source(file_name, speed, shift, volume)
@@ -105,7 +107,10 @@ class DiscordBot(commands.Bot):
             (time.monotonic() - t) * 1000,
         )
         player = self.get_player(voice_client)
-        await player.enqueue(source)
+        if interrupt:
+            player.play_now(voice_key, source)
+        else:
+            await player.enqueue(source)
 
     def active_voice_client(self):
         for voice_client in self.voice_clients:
@@ -249,7 +254,16 @@ class DiscordBot(commands.Bot):
         if doc is None:
             log.warning("Clip not found: %s", command.get("clip_ref"))
             return
-        await self.play_file(voice_client, doc["file"], speed, pitch)
+        # A single play gets its own per-user voice (overlaps others, restarts
+        # on repeat); queue items play sequentially on the shared queue voice.
+        await self.play_file(
+            voice_client,
+            doc["file"],
+            speed,
+            pitch,
+            interrupt=(cmd_type == "play"),
+            voice_key=command.get("requested_by") or "web",
+        )
         log.info(
             "[timing] %s resolve+build+enqueue %.0fms",
             command["clip_ref"],
@@ -280,9 +294,16 @@ def register_commands(bot):
             return
         speed_value = parse_speed(speed)
         pitch_value = parse_pitch(pitch)
-        await bot.play_file(voice_client, doc["file"], speed_value, pitch_value)
+        await bot.play_file(
+            voice_client,
+            doc["file"],
+            speed_value,
+            pitch_value,
+            interrupt=True,
+            voice_key=str(interaction.user.id),
+        )
         await interaction.followup.send(
-            "▶ Queued **{0}** ({1:g}x, {2}s)".format(
+            "▶ Playing **{0}** ({1:g}x, {2}s)".format(
                 doc["name"], speed_value, pitch_value
             )
         )
