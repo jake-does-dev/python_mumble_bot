@@ -7,7 +7,7 @@ from fastapi.responses import FileResponse
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from app.limiter import limiter
-from app.routers import clips, commands, users, voice
+from app.routers import clips, commands, stats, users, voice
 from app.database import get_db
 
 PENDING_COMMANDS_TTL_SECONDS = 30 * 24 * 60 * 60  # 30 days
@@ -32,6 +32,7 @@ app.add_middleware(
 app.include_router(users.router)
 app.include_router(clips.router)
 app.include_router(commands.router)
+app.include_router(stats.router)
 app.include_router(voice.router)
 
 @app.get("/health")

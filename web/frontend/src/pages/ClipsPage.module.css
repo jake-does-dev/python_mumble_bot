@@ -24,6 +24,27 @@
   color: var(--text-h);
 }
 
+.headerActions {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.statsLink {
+  font-size: 0.875rem;
+  color: var(--text);
+  text-decoration: none;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 4px 12px;
+  transition: border-color 0.15s, color 0.15s;
+}
+
+.statsLink:hover {
+  border-color: var(--accent-border);
+  color: var(--accent);
+}
+
 .logout {
   background: transparent;
   border: 1px solid var(--border);
