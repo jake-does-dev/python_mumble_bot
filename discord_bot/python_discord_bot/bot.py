@@ -240,6 +240,13 @@ class DiscordBot(commands.Bot):
                 await voice_client.disconnect()
             await self._publish_voice_state()
             return
+        if cmd_type == "stop":
+            voice_client = self.active_voice_client()
+            if voice_client is not None:
+                player = self.players.get(voice_client.guild.id)
+                if player is not None:
+                    player.panic()
+            return
 
         voice_client = self.active_voice_client()
         if voice_client is None:

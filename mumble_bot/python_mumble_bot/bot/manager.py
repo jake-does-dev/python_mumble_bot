@@ -287,6 +287,13 @@ class PlaybackManager(EventManager):
     def _play_sound(self, pcm):
         self.mumble.sound_output.add_sound(pcm)
 
+    def stop(self):
+        """Panic-stop: clear any audio still buffered for output."""
+        try:
+            self.mumble.sound_output.clear_buffer()
+        except Exception:
+            pass
+
     @staticmethod
     def _concatenate_wav_inputs(files):
         command = ["sox"]
@@ -406,6 +413,10 @@ class CommandManager(EventManager):
 
         if cmd_type == "announce":
             self.text_message_manager.process(ChannelTextEvent(command["message"]))
+            return
+
+        if cmd_type == "stop":
+            self.playback_manager.stop()
             return
 
         speed = command.get("speed", 1.0)

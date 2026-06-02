@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from 'react'
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { useTheme } from '../context/ThemeContext'
@@ -179,6 +179,39 @@ export default function ClipsPage() {
   function showActionToast(message) {
     setActionToast(message)
     setTimeout(() => setActionToast(null), 3500)
+  }
+
+  // Broadcast: every client polls for the latest stop and toasts when a new one
+  // appears, so all users see "X stopped playback" — not just whoever clicked.
+  const lastStopRef = useRef(undefined)
+  const checkStopRef = useRef(() => {})
+  checkStopRef.current = async () => {
+    try {
+      const res = await api.get('/api/commands/last-stop')
+      const at = res.data.at
+      if (!at) return
+      if (lastStopRef.current === undefined) { lastStopRef.current = at; return }
+      if (at > lastStopRef.current) {
+        lastStopRef.current = at
+        const by = res.data.by
+        showActionToast(by === username ? '⏹ You stopped playback' : `⏹ ${by} stopped playback`)
+      }
+    } catch { /* ignore */ }
+  }
+
+  useEffect(() => {
+    checkStopRef.current()
+    const id = setInterval(() => checkStopRef.current(), 3000)
+    return () => clearInterval(id)
+  }, [])
+
+  async function handleStop() {
+    try {
+      await api.post('/api/commands/stop')
+      await checkStopRef.current()
+    } catch (err) {
+      showActionToast(err.response?.data?.detail || 'Could not stop playback')
+    }
   }
 
   async function handlePlay(identifier, pitch, speed) {
@@ -398,6 +431,15 @@ export default function ClipsPage() {
               >
                 ↑ Upload
               </button>
+              {isAdmin && (
+                <button
+                  className={styles.stopBtn}
+                  onClick={handleStop}
+                  title="Stop all playback now (admin)"
+                >
+                  ⏹ Stop
+                </button>
+              )}
             </div>
             {uploadOpen && (
               <UploadPanel

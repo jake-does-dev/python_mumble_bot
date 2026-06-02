@@ -87,6 +87,19 @@ class _MixerStream(discord.AudioSource):
     def is_opus(self):
         return False
 
+    def clear(self):
+        """Drop all active voices immediately (stop playback) but keep the
+        stream alive (it just emits silence). on_done fires so anyone awaiting
+        a queue voice is unblocked."""
+        with self._lock:
+            items = list(self._voices.items())
+            self._voices.clear()
+        for key, (src, on_done) in items:
+            if src is not None:
+                src.cleanup()
+            if on_done is not None:
+                on_done()
+
     def cleanup(self):
         with self._lock:
             voices = list(self._voices.values())
@@ -117,6 +130,20 @@ class GuildPlayer:
         if self._task is not None:
             self._task.cancel()
         self._mixer.cleanup()
+
+    def panic(self):
+        """Stop everything now: drain queued items and clear all live voices.
+        The warm stream keeps running (silence), so the connection stays warm."""
+        drained = 0
+        while not self.queue.empty():
+            try:
+                self.queue.get_nowait()
+                self.queue.task_done()
+                drained += 1
+            except Exception:
+                break
+        self._mixer.clear()
+        log.info("Panic: cleared playback (%d queued dropped)", drained)
 
     def play_now(self, voice_key, source):
         """Play a single clip on this user's voice — overlaps other users,

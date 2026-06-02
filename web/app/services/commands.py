@@ -108,6 +108,33 @@ class CommandsService:
         if log_docs:
             self.db.play_log.insert_many(log_docs)
 
+    def last_stop(self) -> dict:
+        doc = self.db.pending_commands.find_one(
+            {"type": "stop"}, sort=[("created_at", pymongo.DESCENDING)]
+        )
+        if not doc:
+            return {"at": None, "by": None}
+        return {
+            "at": doc["created_at"].isoformat() + "Z",
+            "by": doc.get("requested_by"),
+        }
+
+    def enqueue_stop(self, requested_by: str) -> None:
+        # Cancel anything still queued so it won't start, then tell the bot to
+        # clear whatever is currently playing.
+        self.db.pending_commands.update_many(
+            {"status": "pending", "type": {"$in": ["play", "queue_play"]}},
+            {"$set": {"status": "done"}},
+        )
+        self.db.pending_commands.insert_one(
+            {
+                "type": "stop",
+                "requested_by": requested_by,
+                "status": "pending",
+                "created_at": datetime.utcnow(),
+            }
+        )
+
     def enqueue_join(self, channel_id: str, requested_by: str) -> None:
         self.db.pending_commands.insert_one(
             {
