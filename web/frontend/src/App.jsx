@@ -3,6 +3,7 @@ import { useAuth } from './context/AuthContext'
 import LoginPage from './pages/LoginPage'
 import ClipsPage from './pages/ClipsPage'
 import StatsPage from './pages/StatsPage'
+import AdminUsersPage from './pages/AdminUsersPage'
 
 export default function App() {
   const { token } = useAuth()
@@ -12,6 +13,7 @@ export default function App() {
       <Route path="/login" element={<LoginPage />} />
       <Route path="/" element={token ? <ClipsPage /> : <Navigate to="/login" replace />} />
       <Route path="/stats" element={token ? <StatsPage /> : <Navigate to="/login" replace />} />
+      <Route path="/admin/users" element={token ? <AdminUsersPage /> : <Navigate to="/login" replace />} />
       <Route path="*" element={<Navigate to={token ? '/' : '/login'} replace />} />
     </Routes>
   )

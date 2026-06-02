@@ -40,6 +40,8 @@ export default function VoicePanel() {
     try {
       await api.post('/api/voice/join', { channel_id: selected })
       setTimeout(refresh, 1500)
+    } catch (err) {
+      if (err.response?.status === 403) showToast(err.response.data?.detail || 'Not allowed')
     } finally {
       setBusy(false)
     }
@@ -50,6 +52,8 @@ export default function VoicePanel() {
     try {
       await api.post('/api/voice/leave')
       setTimeout(refresh, 1500)
+    } catch (err) {
+      if (err.response?.status === 403) showToast(err.response.data?.detail || 'Not allowed')
     } finally {
       setBusy(false)
     }

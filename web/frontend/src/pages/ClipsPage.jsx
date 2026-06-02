@@ -47,6 +47,9 @@ export default function ClipsPage() {
   const [isAdmin, setIsAdmin] = useState(false)
   const [voiceControl, setVoiceControl] = useState(false)
   const [username, setUsername] = useState(null)
+  const [presenceRequired, setPresenceRequired] = useState(false)
+  const [voiceLinked, setVoiceLinked] = useState(false)
+  const [actionToast, setActionToast] = useState(null)
   const [queueCooldownUntil, setQueueCooldownUntil] = useState(0)
   const [now, setNow] = useState(Date.now())
 
@@ -97,6 +100,8 @@ export default function ClipsPage() {
         setIsAdmin(meRes.data.is_admin)
         setVoiceControl(meRes.data.voice_control)
         setUsername(meRes.data.username)
+        setPresenceRequired(meRes.data.presence_required)
+        setVoiceLinked(meRes.data.voice_linked)
       })
       .catch(err => {
         if (err.response?.status === 401) {
@@ -156,11 +161,20 @@ export default function ClipsPage() {
     })
   }
 
+  function showActionToast(message) {
+    setActionToast(message)
+    setTimeout(() => setActionToast(null), 3500)
+  }
+
   async function handlePlay(identifier, pitch, speed) {
     setPlayingId(identifier)
     try {
       await api.post(`/api/commands/play/${identifier}`, { pitch, speed })
       setTimeout(fetchHistory, 1500)
+    } catch (err) {
+      if (err.response?.status === 403) {
+        showActionToast(err.response.data?.detail || 'Not allowed to play right now')
+      }
     } finally {
       setPlayingId(null)
     }
@@ -291,6 +305,8 @@ export default function ClipsPage() {
         const m = /(\d+)/.exec(err.response.data?.detail || '')
         const secs = m ? Number(m[1]) : 30
         setQueueCooldownUntil(Date.now() + secs * 1000)
+      } else if (err.response?.status === 403) {
+        showActionToast(err.response.data?.detail || 'Not allowed to play right now')
       }
     } finally {
       setPlayingQueue(false)
@@ -315,9 +331,16 @@ export default function ClipsPage() {
             {theme === 'dark' ? '☀' : '☾'}
           </button>
           <Link to="/stats" className={styles.statsLink}>📊 Stats</Link>
+          {isAdmin && <Link to="/admin/users" className={styles.statsLink}>⚙ Users</Link>}
           <button className={styles.logout} onClick={handleLogout}>Sign out</button>
         </div>
       </header>
+
+      {presenceRequired && !voiceLinked && !isAdmin && (
+        <div className={styles.linkBanner}>
+          ⚠ Your account isn't linked to a voice user yet — ask an admin to link you before you can play clips.
+        </div>
+      )}
 
       <div className={styles.layout}>
         <div className={styles.main}>
@@ -491,6 +514,7 @@ export default function ClipsPage() {
           )}
         </aside>
       </div>
+      {actionToast && <div className={styles.actionToast}>{actionToast}</div>}
     </div>
   )
 }

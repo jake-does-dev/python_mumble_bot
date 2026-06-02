@@ -26,6 +26,34 @@ class UsersService:
         })
         return True
 
+    def list_users(self) -> list:
+        return [
+            {
+                "username": u["username"],
+                "is_admin": u.get("is_admin", False),
+                "voice_id": u.get("voice_id"),
+                "voice_name": u.get("voice_name"),
+            }
+            for u in self.db.users.find({}, {"password": 0}).sort("username", 1)
+        ]
+
+    def set_voice_link(
+        self, username: str, voice_id: Optional[str], voice_name: Optional[str]
+    ) -> bool:
+        if not self.get_user(username):
+            return False
+        if voice_id:
+            self.db.users.update_one(
+                {"username": username},
+                {"$set": {"voice_id": voice_id, "voice_name": voice_name}},
+            )
+        else:
+            self.db.users.update_one(
+                {"username": username},
+                {"$unset": {"voice_id": "", "voice_name": ""}},
+            )
+        return True
+
     def is_admin(self, username: str) -> bool:
         user = self.get_user(username)
         if not user:

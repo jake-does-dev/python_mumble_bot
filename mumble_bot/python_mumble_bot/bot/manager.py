@@ -10,7 +10,13 @@ from pathlib import Path
 import requests
 from pmb_core.audio import transform
 
-from python_mumble_bot.bot.constants import BITRATE, DEFAULT_RECORDING_DIR, ROOT_CHANNEL
+from python_mumble_bot.bot.constants import (
+    BITRATE,
+    DEFAULT_RECORDING_DIR,
+    MUMBLE_USERNAME,
+    NAME,
+    ROOT_CHANNEL,
+)
 from python_mumble_bot.bot.event import (
     AudioEvent,
     ChannelTextEvent,
@@ -431,3 +437,71 @@ class StateManager(EventManager):
 
     def get_volume(self):
         return self.mongo_interface.get_volume()
+
+
+class VoiceStateManager(EventManager):
+    """Publishes who is currently in the bot's channel into `voice_state`.
+
+    Mirrors the Discord bot's voice_state doc so the shared web app can gate
+    playback on presence. In Mumble the user's identity is their username, so
+    each member is published as {id: name, name: name}.
+    """
+
+    POLL_INTERVAL = 2.0
+
+    def __init__(self, mumble, mongo_interface):
+        self.mumble = mumble
+        self.mongo_interface = mongo_interface
+        self._last_poll = 0
+
+    def loop(self):
+        now = time.time()
+        if now - self._last_poll < self.POLL_INTERVAL:
+            return
+        self._last_poll = now
+        self._publish()
+
+    def _publish(self):
+        try:
+            my_channel = self.mumble.my_channel()
+            channel_id = my_channel["channel_id"]
+            channel_name = my_channel.get("name", str(channel_id))
+        except Exception:
+            return
+
+        bot_name = os.getenv(MUMBLE_USERNAME)
+        members = []
+        for session in list(self.mumble.users):
+            user = self.mumble.users[session]
+            try:
+                if user["channel_id"] != channel_id:
+                    continue
+                name = user[NAME]
+            except Exception:
+                continue
+            if name == bot_name:
+                continue
+            members.append({"id": name, "name": name})
+
+        channels = [
+            {
+                "id": str(channel_id),
+                "name": channel_name,
+                "users": len(members),
+                "members": members,
+            }
+        ]
+        try:
+            self.mongo_interface.db.voice_state.update_one(
+                {"_id": "state"},
+                {
+                    "$set": {
+                        "channels": channels,
+                        "current_channel_id": str(channel_id),
+                        "present": members,
+                    }
+                },
+                upsert=True,
+            )
+        except Exception:
+            pass
