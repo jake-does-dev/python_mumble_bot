@@ -26,13 +26,18 @@ CLIP_ID_MODE = os.getenv("CLIP_ID_MODE", "prefix")
 # single clip can be wildly louder than the rest. Done at upload so playback
 # stays instant (no per-play processing).
 NORMALIZE_UPLOADS = os.getenv("NORMALIZE_UPLOADS", "").lower() in ("1", "true", "yes")
-LOUDNORM_TARGET = "loudnorm=I=-16:TP=-1.5:LRA=11"
+# Trim leading silence (so clips start right on the sound), then
+# loudness-normalise. Applied once at upload — keeps playback instant.
+_AUDIO_FILTER = (
+    "silenceremove=start_periods=1:start_duration=0:start_threshold=-50dB,"
+    "loudnorm=I=-16:TP=-1.5:LRA=11"
+)
 
 
 def _normalize_loudness(path: Path) -> None:
     tmp = path.with_name(".norm_" + path.name)
     result = subprocess.run(
-        ["ffmpeg", "-y", "-i", str(path), "-af", LOUDNORM_TARGET, "-ar", "48000", str(tmp)],
+        ["ffmpeg", "-y", "-i", str(path), "-af", _AUDIO_FILTER, "-ar", "48000", str(tmp)],
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
     )
