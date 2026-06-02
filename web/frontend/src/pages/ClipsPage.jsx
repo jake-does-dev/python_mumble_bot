@@ -8,6 +8,7 @@ import UploadPanel from '../components/UploadPanel'
 import QueuePanel from '../components/QueuePanel'
 import VoicePanel from '../components/VoicePanel'
 import PadBoard from '../components/PadBoard'
+import HelpModal from '../components/HelpModal'
 import styles from './ClipsPage.module.css'
 
 const newId = () => Date.now().toString(36) + Math.random().toString(36).slice(2)
@@ -61,6 +62,7 @@ export default function ClipsPage() {
   const [view, setView] = useState(() => localStorage.getItem('pmb_view') || 'grid')
   const [sort, setSort] = useState(() => localStorage.getItem('pmb_sort') || 'alpha')
   const [uploadOpen, setUploadOpen] = useState(false)
+  const [helpOpen, setHelpOpen] = useState(false)
   const [tagsExpanded, setTagsExpanded] = useState(() => localStorage.getItem('pmb_tags_expanded') !== 'false')
 
   const [sidebarTab, setSidebarTab] = useState('history')
@@ -391,6 +393,7 @@ export default function ClipsPage() {
           >
             {theme === 'dark' ? '☀' : '☾'}
           </button>
+          <button className={styles.statsLink} onClick={() => setHelpOpen(true)} title="How to use the bot">❓ Help</button>
           <Link to="/stats" className={styles.statsLink}>📊 Stats</Link>
           {isAdmin && <Link to="/admin/users" className={styles.statsLink}>⚙ Users</Link>}
           <button className={styles.logout} onClick={handleLogout}>Sign out</button>
@@ -594,6 +597,15 @@ export default function ClipsPage() {
         </aside>
       </div>
       {actionToast && <div className={styles.actionToast}>{actionToast}</div>}
+      {helpOpen && (
+        <HelpModal
+          onClose={() => setHelpOpen(false)}
+          isAdmin={isAdmin}
+          voiceControl={voiceControl}
+          presenceRequired={presenceRequired}
+          appTitle={document.title || 'the bot'}
+        />
+      )}
     </div>
   )
 }

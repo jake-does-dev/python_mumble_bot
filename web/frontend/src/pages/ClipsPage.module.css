@@ -32,11 +32,14 @@
 
 .statsLink {
   font-size: 0.875rem;
+  font-family: inherit;
   color: var(--text);
   text-decoration: none;
+  background: transparent;
   border: 1px solid var(--border);
   border-radius: 6px;
   padding: 4px 12px;
+  cursor: pointer;
   transition: border-color 0.15s, color 0.15s;
 }
 
