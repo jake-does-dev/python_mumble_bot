@@ -1,55 +1,21 @@
 import { useState, useRef, useEffect } from 'react'
 import api from '../api'
 import TrimModal from './TrimModal'
+import {
+  PITCH_MIN,
+  PITCH_MAX,
+  SPEED_SLIDER_STEPS,
+  speedToSlider,
+  sliderToSpeed,
+  loadSetting,
+  saveSetting,
+  pitchLabel,
+} from '../lib/clipSettings'
 import styles from './ClipCard.module.css'
-
-const PITCH_MIN = -12
-const PITCH_MAX = 12
-const SPEED_MIN = 0.5
-const SPEED_MAX = 4
-const SPEED_SLIDER_STEPS = 1000
-const SPEED_SLIDER_MID = SPEED_SLIDER_STEPS / 2
-const STORAGE_KEY = 'pmb_clip_settings'
-
-function speedToSlider(speed) {
-  if (speed <= 1.0) {
-    return Math.round((speed - SPEED_MIN) / (1.0 - SPEED_MIN) * SPEED_SLIDER_MID)
-  }
-  return Math.round(SPEED_SLIDER_MID + (speed - 1.0) / (SPEED_MAX - 1.0) * SPEED_SLIDER_MID)
-}
-
-function sliderToSpeed(v) {
-  if (v <= SPEED_SLIDER_MID) {
-    return SPEED_MIN + (v / SPEED_SLIDER_MID) * (1.0 - SPEED_MIN)
-  }
-  return 1.0 + ((v - SPEED_SLIDER_MID) / SPEED_SLIDER_MID) * (SPEED_MAX - 1.0)
-}
-
-function loadSetting(identifier, key, defaultValue) {
-  try {
-    const all = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}')
-    return all[identifier]?.[key] ?? defaultValue
-  } catch {
-    return defaultValue
-  }
-}
-
-function saveSetting(identifier, key, value) {
-  try {
-    const all = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}')
-    all[identifier] = { ...all[identifier], [key]: value }
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(all))
-  } catch {}
-}
 
 function formatDate(iso) {
   if (!iso) return null
   return new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
-}
-
-function pitchLabel(v) {
-  if (v === 0) return '0 st'
-  return `${v > 0 ? '+' : ''}${v} st`
 }
 
 export default function ClipCard({ clip, onToggleFavourite, onPlay, onDelete, onAddToQueue, onEdit, onVote, onTrimmed, username = null, playing, isAdmin = false, view = 'grid' }) {

@@ -5,7 +5,7 @@ import pymongo
 
 from app.database import get_db
 
-HISTORY_LIMIT = 50
+HISTORY_LIMIT = 250
 
 
 class CommandsService:
