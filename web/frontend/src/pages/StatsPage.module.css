@@ -1,0 +1,373 @@
+.page {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 0 1.5rem;
+  box-sizing: border-box;
+  height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1.25rem 0;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 1.25rem;
+}
+
+.nav {
+  display: flex;
+  align-items: baseline;
+  gap: 1rem;
+}
+
+.navLink {
+  font-size: 0.875rem;
+  color: var(--text);
+  text-decoration: none;
+  transition: color 0.15s;
+}
+
+.navLink:hover {
+  color: var(--accent);
+}
+
+.title {
+  font-weight: 600;
+  font-size: 1.1rem;
+  color: var(--text-h);
+}
+
+.logout {
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  font-size: 0.875rem;
+  padding: 4px 12px;
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s;
+}
+
+.logout:hover {
+  border-color: var(--text);
+  color: var(--text-h);
+}
+
+.periodBar {
+  display: flex;
+  gap: 2px;
+  margin-bottom: 1.25rem;
+  flex-shrink: 0;
+}
+
+.periodBtn {
+  padding: 5px 14px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text);
+  font-size: 0.875rem;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+
+.periodBtn:hover {
+  border-color: var(--accent-border);
+  color: var(--text-h);
+}
+
+.periodBtn.active {
+  background: var(--accent-bg);
+  border-color: var(--accent-border);
+  color: var(--accent);
+}
+
+.scroll {
+  flex: 1;
+  overflow-y: auto;
+  min-height: 0;
+  padding-bottom: 2rem;
+  padding-right: 0.5rem;
+  scrollbar-gutter: stable;
+}
+
+.status {
+  color: var(--text);
+  text-align: center;
+  padding: 3rem 0;
+}
+
+.errorMsg {
+  color: #ef4444;
+  text-align: center;
+  padding: 3rem 0;
+}
+
+.cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 1rem;
+  margin-bottom: 1.25rem;
+}
+
+.card {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 1rem 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  background: var(--bg);
+}
+
+.cardValue {
+  font-size: 1.5rem;
+  font-weight: 600;
+  color: var(--text-h);
+}
+
+.cardLabel {
+  font-size: 0.8rem;
+  color: var(--text);
+}
+
+.twoCol {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1.25rem;
+  margin-bottom: 1.25rem;
+}
+
+@media (max-width: 768px) {
+  .twoCol {
+    grid-template-columns: 1fr;
+  }
+}
+
+.panel {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 1rem 1.25rem;
+  margin-bottom: 1.25rem;
+  background: var(--bg);
+}
+
+.twoCol .panel {
+  margin-bottom: 0;
+}
+
+.panelTitle {
+  font-size: 0.8rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text);
+  margin: 0 0 1rem;
+}
+
+.empty {
+  font-size: 0.875rem;
+  color: var(--text);
+  margin: 0;
+}
+
+/* Horizontal bar lists */
+.barList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.barRow {
+  display: grid;
+  grid-template-columns: 140px 1fr 2.5rem;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.barLabel {
+  font-size: 0.85rem;
+  color: var(--text-h);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.barTrack {
+  background: var(--code-bg);
+  border-radius: 999px;
+  height: 0.7rem;
+  overflow: hidden;
+}
+
+.barFill {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+  border-radius: 999px;
+  transition: width 0.3s ease;
+}
+
+.barValue {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--text-h);
+  text-align: right;
+}
+
+/* Timeline */
+.timeline {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.timelineBars {
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+  height: 140px;
+}
+
+.timelineCol {
+  flex: 1;
+  height: 100%;
+  display: flex;
+  align-items: flex-end;
+  min-width: 0;
+}
+
+.timelineBar {
+  width: 100%;
+  background: var(--accent);
+  border-radius: 3px 3px 0 0;
+  min-height: 2px;
+  transition: height 0.3s ease;
+}
+
+.timelineCol:hover .timelineBar {
+  background: var(--text-h);
+}
+
+.timelineLabels {
+  display: flex;
+  gap: 2px;
+}
+
+.timelineLabel {
+  flex: 1;
+  font-size: 0.65rem;
+  color: var(--text);
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  min-width: 0;
+}
+
+/* Heatmap */
+.heatmap {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  overflow-x: auto;
+}
+
+.heatmapRow {
+  display: flex;
+  gap: 3px;
+  align-items: center;
+}
+
+.heatmapCorner {
+  width: 2.2rem;
+  flex-shrink: 0;
+}
+
+.heatmapDay {
+  width: 2.2rem;
+  flex-shrink: 0;
+  font-size: 0.7rem;
+  color: var(--text);
+}
+
+.heatmapHour {
+  flex: 1;
+  min-width: 14px;
+  font-size: 0.6rem;
+  color: var(--text);
+  text-align: center;
+}
+
+.heatmapCell {
+  flex: 1;
+  min-width: 14px;
+  aspect-ratio: 1;
+  border-radius: 3px;
+  background: var(--accent);
+}
+
+/* Who plays what */
+.favList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.favRow {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: baseline;
+  gap: 0.6rem;
+}
+
+.favUser {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text-h);
+}
+
+.favClip {
+  font-size: 0.85rem;
+  color: var(--accent);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.favCount {
+  font-size: 0.75rem;
+  color: var(--text);
+}
+
+/* Tag cloud */
+.tagCloud {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: baseline;
+}
+
+.tagChip {
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: var(--accent-bg);
+  color: var(--accent);
+  border: 1px solid var(--accent-border);
+  line-height: 1.4;
+}
+
+.tagChip em {
+  font-style: normal;
+  opacity: 0.7;
+  font-size: 0.7em;
+}

@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useCallback } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, Link } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import api from '../api'
 import ClipCard from '../components/ClipCard'
@@ -303,7 +303,10 @@ export default function ClipsPage() {
     <div className={styles.page}>
       <header className={styles.header}>
         <span className={styles.title}>Python Mumble Bot</span>
-        <button className={styles.logout} onClick={handleLogout}>Sign out</button>
+        <div className={styles.headerActions}>
+          <Link to="/stats" className={styles.statsLink}>📊 Stats</Link>
+          <button className={styles.logout} onClick={handleLogout}>Sign out</button>
+        </div>
       </header>
 
       <div className={styles.layout}>
