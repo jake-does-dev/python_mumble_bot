@@ -13,40 +13,55 @@ class CommandsService:
         self.db = get_db()
 
     def get_history(self) -> list:
-        commands = list(
-            self.db.pending_commands.find(
-                {"status": "done", "type": {"$nin": ["announce", "join", "leave"]}},
-                sort=[("created_at", pymongo.DESCENDING)],
+        entries = list(
+            self.db.play_log.find(
+                {},
+                sort=[("played_at", pymongo.DESCENDING)],
                 limit=HISTORY_LIMIT,
             )
         )
-        clip_refs = [c["clip_ref"] for c in commands]
+        clip_refs = [e["clip_ref"] for e in entries]
         clips = {
             c["identifier"]: c["name"]
             for c in self.db.clips.find({"identifier": {"$in": clip_refs}})
         }
         return [
             {
-                "clip_ref": c["clip_ref"],
-                "clip_name": c.get("clip_name") or clips.get(c["clip_ref"], c["clip_ref"]),
-                "requested_by": c["requested_by"],
-                "played_at": c["created_at"].isoformat() + "Z",
+                "clip_ref": e["clip_ref"],
+                "clip_name": clips.get(e["clip_ref"]) or e.get("clip_name") or e["clip_ref"],
+                "requested_by": e["requested_by"],
+                "played_at": e["played_at"].isoformat() + "Z",
             }
-            for c in commands
+            for e in entries
         ]
 
+    def _log_play(self, clip_ref, clip_name, requested_by, pitch, speed, played_at):
+        # Durable, append-only record for stats (pending_commands is TTL'd).
+        self.db.play_log.insert_one(
+            {
+                "clip_ref": clip_ref,
+                "clip_name": clip_name,
+                "requested_by": requested_by,
+                "pitch": pitch,
+                "speed": speed,
+                "played_at": played_at,
+            }
+        )
+
     def enqueue_play(self, clip_ref: str, clip_name: str, requested_by: str, pitch: int = 0, speed: float = 1.0) -> dict:
+        now = datetime.utcnow()
         command = {
             "type": "play",
             "clip_ref": clip_ref,
             "clip_name": clip_name,
             "requested_by": requested_by,
             "status": "pending",
-            "created_at": datetime.utcnow(),
+            "created_at": now,
             "pitch": pitch,
             "speed": speed,
         }
         self.db.pending_commands.insert_one(command)
+        self._log_play(clip_ref, clip_name, requested_by, pitch, speed, now)
         return command
 
     @staticmethod
@@ -68,18 +83,30 @@ class CommandsService:
                 "created_at": base_time,
             }
         ]
+        log_docs = []
         for i, item in enumerate(items, start=1):
+            played_at = base_time + timedelta(microseconds=i)
             docs.append({
                 "type": "queue_play",
                 "clip_ref": item["clip_ref"],
                 "clip_name": item.get("clip_name") or item["clip_ref"],
                 "requested_by": requested_by,
                 "status": "pending",
-                "created_at": base_time + timedelta(microseconds=i),
+                "created_at": played_at,
                 "pitch": item.get("pitch", 0),
                 "speed": item.get("speed", 1.0),
             })
+            log_docs.append({
+                "clip_ref": item["clip_ref"],
+                "clip_name": item.get("clip_name") or item["clip_ref"],
+                "requested_by": requested_by,
+                "pitch": item.get("pitch", 0),
+                "speed": item.get("speed", 1.0),
+                "played_at": played_at,
+            })
         self.db.pending_commands.insert_many(docs)
+        if log_docs:
+            self.db.play_log.insert_many(log_docs)
 
     def enqueue_join(self, channel_id: str, requested_by: str) -> None:
         self.db.pending_commands.insert_one(
