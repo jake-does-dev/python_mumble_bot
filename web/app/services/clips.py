@@ -1,6 +1,7 @@
 import io
 import os
 import re
+import shutil
 import subprocess
 import wave
 from datetime import datetime
@@ -32,6 +33,8 @@ _AUDIO_FILTER = (
     "silenceremove=start_periods=1:start_duration=0:start_threshold=-50dB,"
     "loudnorm=I=-16:TP=-1.5:LRA=11"
 )
+# Re-normalise after a manual trim (no silence-removal — the user chose the cut).
+_LOUDNORM_FILTER = "loudnorm=I=-16:TP=-1.5:LRA=11"
 
 
 def _normalize_loudness(path: Path) -> None:
@@ -207,6 +210,77 @@ class ClipsService:
 
         return self.db.clips.find_one({"identifier": identifier}, {"_id": 0})
 
+    def _authorize_edit(self, clip, current_user, is_admin):
+        if not (is_admin or clip.get("uploaded_by") == current_user):
+            raise HTTPException(403, "You can only edit clips you uploaded")
+
+    def trim_clip(
+        self,
+        identifier: str,
+        current_user: str,
+        is_admin: bool,
+        start: float,
+        end: float,
+    ) -> dict:
+        clip = self.db.clips.find_one({"identifier": identifier})
+        if not clip:
+            raise HTTPException(404, f"Clip '{identifier}' not found")
+        self._authorize_edit(clip, current_user, is_admin)
+
+        if start < 0 or end <= start or (end - start) < 0.1:
+            raise HTTPException(400, "Invalid trim selection")
+
+        path = AUDIO_DIR / clip["file"]
+        if not path.exists():
+            raise HTTPException(404, "Audio file not found")
+
+        # Keep a one-time backup of the very first original so trims are revertable.
+        original_file = clip.get("original_file")
+        if not original_file:
+            original_file = ".orig_" + clip["file"]
+            backup = AUDIO_DIR / original_file
+            if not backup.exists():
+                shutil.copy2(path, backup)
+
+        tmp = path.with_name(".trim_" + path.name)
+        result = subprocess.run(
+            [
+                "ffmpeg", "-y", "-i", str(path),
+                "-ss", f"{start:.3f}", "-to", f"{end:.3f}",
+                "-af", _LOUDNORM_FILTER, "-ar", "48000", str(tmp),
+            ],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        if result.returncode != 0 or not tmp.exists():
+            if tmp.exists():
+                tmp.unlink()
+            raise HTTPException(500, "Trim failed")
+        os.replace(tmp, path)
+
+        self.db.clips.update_one(
+            {"identifier": identifier}, {"$set": {"original_file": original_file}}
+        )
+        return self.db.clips.find_one({"identifier": identifier}, {"_id": 0})
+
+    def revert_clip(
+        self, identifier: str, current_user: str, is_admin: bool
+    ) -> dict:
+        clip = self.db.clips.find_one({"identifier": identifier})
+        if not clip:
+            raise HTTPException(404, f"Clip '{identifier}' not found")
+        self._authorize_edit(clip, current_user, is_admin)
+
+        original_file = clip.get("original_file")
+        if not original_file:
+            raise HTTPException(400, "This clip has no original to revert to")
+        backup = AUDIO_DIR / original_file
+        if not backup.exists():
+            raise HTTPException(404, "Original backup is missing")
+
+        shutil.copy2(backup, AUDIO_DIR / clip["file"])
+        return self.db.clips.find_one({"identifier": identifier}, {"_id": 0})
+
     def delete_clip(self, identifier: str) -> None:
         clip = self.db.clips.find_one({"identifier": identifier})
         if not clip:
@@ -215,6 +289,10 @@ class ClipsService:
         audio_file = AUDIO_DIR / clip["file"]
         if audio_file.exists():
             audio_file.unlink()
+        if clip.get("original_file"):
+            backup = AUDIO_DIR / clip["original_file"]
+            if backup.exists():
+                backup.unlink()
 
         self.db.clips.delete_one({"identifier": identifier})
         self.db.favourites.update_many({}, {"$pull": {"clips": identifier}})

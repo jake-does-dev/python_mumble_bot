@@ -306,6 +306,22 @@
   color: #ef4444;
 }
 
+.trimBtn {
+  padding: 0.35rem 0.5rem;
+  border-radius: 6px;
+  font-size: 0.8rem;
+  cursor: pointer;
+  border: 1px dashed var(--border);
+  background: transparent;
+  color: var(--text-h);
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+
+.trimBtn:hover {
+  border-color: var(--accent-border);
+  color: var(--accent);
+}
+
 .editActions {
   display: flex;
   gap: 0.4rem;
