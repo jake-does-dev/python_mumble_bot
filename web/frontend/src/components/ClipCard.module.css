@@ -49,6 +49,8 @@
 }
 
 .cardList .actions {
+  display: flex;
+  justify-content: flex-end;
   margin-top: 0;
   flex-shrink: 0;
 }
@@ -159,9 +161,9 @@
 }
 
 .actions {
-  display: flex;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
   gap: 0.5rem;
-  justify-content: flex-end;
   margin-top: 0.25rem;
 }
 

@@ -138,6 +138,7 @@ export default function ClipsPage() {
       })
       .sort((a, b) => {
         if (sort === 'top') return (b.score ?? 0) - (a.score ?? 0)
+        if (sort === 'rot') return (a.score ?? 0) - (b.score ?? 0)
         if (sort === 'newest') return new Date(b.creation_time) - new Date(a.creation_time)
         if (sort === 'oldest') return new Date(a.creation_time) - new Date(b.creation_time)
         return a.name.localeCompare(b.name)
@@ -339,7 +340,8 @@ export default function ClipsPage() {
                 <button className={`${styles.viewBtn} ${sort === 'alpha'   ? styles.active : ''}`} onClick={() => handleSetSort('alpha')}  title="Sort A→Z">A→Z</button>
                 <button className={`${styles.viewBtn} ${sort === 'newest'  ? styles.active : ''}`} onClick={() => handleSetSort('newest')} title="Sort newest first">Date ↓</button>
                 <button className={`${styles.viewBtn} ${sort === 'oldest'  ? styles.active : ''}`} onClick={() => handleSetSort('oldest')} title="Sort oldest first">Date ↑</button>
-                <button className={`${styles.viewBtn} ${sort === 'top'     ? styles.active : ''}`} onClick={() => handleSetSort('top')}    title="Sort by votes">★ Top</button>
+                <button className={`${styles.viewBtn} ${sort === 'top'     ? styles.active : ''}`} onClick={() => handleSetSort('top')}    title="Best rated first">★ Top</button>
+                <button className={`${styles.viewBtn} ${sort === 'rot'     ? styles.active : ''}`} onClick={() => handleSetSort('rot')}    title="Worst rated first">🥀 Rot</button>
               </div>
               <div className={styles.viewToggle}>
                 <button className={`${styles.viewBtn} ${view === 'grid' ? styles.active : ''}`} onClick={() => handleSetView('grid')} title="Grid view">⊞</button>
