@@ -19,6 +19,7 @@ from python_mumble_bot.bot.manager import (
     RecordingManager,
     StateManager,
     TextMessageManager,
+    VoiceStateManager,
 )
 
 
@@ -44,6 +45,7 @@ class Client:
     RECORDING_MANAGER = "RECORDING_MANAGER"
     TEXT_MESSAGE_MANAGER = "TEXT_MESSAGE_MANAGER"
     COMMAND_MANAGER = "COMMAND_MANAGER"
+    VOICE_STATE_MANAGER = "VOICE_STATE_MANAGER"
 
     def __init__(
         self,
@@ -81,11 +83,16 @@ class Client:
             state_manager.mongo_interface, playback_manager, text_message_manager
         )
 
+        voice_state_manager = VoiceStateManager(
+            self.mumble, state_manager.mongo_interface
+        )
+
         self.managers[self.STATE_MANAGER] = state_manager
         self.managers[self.PLAYBACK_MANAGER] = playback_manager
         self.managers[self.RECORDING_MANAGER] = recording_manager
         self.managers[self.TEXT_MESSAGE_MANAGER] = text_message_manager
         self.managers[self.COMMAND_MANAGER] = command_manager
+        self.managers[self.VOICE_STATE_MANAGER] = voice_state_manager
 
     # noinspection PyUnresolvedReferences
     def set_callbacks(self):

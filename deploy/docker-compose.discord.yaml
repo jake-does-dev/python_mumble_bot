@@ -57,6 +57,7 @@ services:
       VOICE_CONTROL_ENABLED: "true"
       APP_TITLE: "Discord Bot"
       NORMALIZE_UPLOADS: "true"
+      PLAY_REQUIRES_PRESENCE: "true"
     volumes:
     - /tank/pmb/discord-audio:/app/audio
     ports:

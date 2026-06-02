@@ -151,15 +151,34 @@ class DiscordBot(commands.Bot):
                 "id": str(c.id),
                 "name": c.name,
                 "users": sum(1 for m in c.members if not m.bot),
+                "members": [
+                    {"id": str(m.id), "name": m.display_name}
+                    for m in c.members
+                    if not m.bot
+                ],
             }
             for c in guild.voice_channels
         ]
         voice_client = self.active_voice_client()
         current = str(voice_client.channel.id) if voice_client else None
+        # Members of the bot's current channel — the presence-gate set.
+        present = []
+        if voice_client is not None:
+            present = [
+                {"id": str(m.id), "name": m.display_name}
+                for m in voice_client.channel.members
+                if not m.bot
+            ]
         await asyncio.to_thread(
             lambda: self.mongo.db.voice_state.update_one(
                 {"_id": "state"},
-                {"$set": {"channels": channels, "current_channel_id": current}},
+                {
+                    "$set": {
+                        "channels": channels,
+                        "current_channel_id": current,
+                        "present": present,
+                    }
+                },
                 upsert=True,
             )
         )

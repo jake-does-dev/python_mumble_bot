@@ -1,4 +1,5 @@
 import os
+from typing import Optional
 from fastapi import APIRouter, HTTPException, Depends, Request
 from fastapi.security import OAuth2PasswordRequestForm
 from app.auth import create_access_token, get_current_user
@@ -12,12 +13,21 @@ VOICE_CONTROL_ENABLED = os.getenv("VOICE_CONTROL_ENABLED", "").lower() in (
     "true",
     "yes",
 )
+PLAY_REQUIRES_PRESENCE = os.getenv("PLAY_REQUIRES_PRESENCE", "").lower() in (
+    "1",
+    "true",
+    "yes",
+)
 
 router = APIRouter(prefix="/api/users", tags=["users"])
 
 class ChangePassword(BaseModel):
     current_password: str
     new_password: str
+
+class VoiceLink(BaseModel):
+    voice_id: Optional[str] = None
+    voice_name: Optional[str] = None
 
 @router.post("/login", response_model=Token)
 @limiter.limit("5/minute")
@@ -39,11 +49,33 @@ def register(user: UserCreate, current_user: str = Depends(get_current_user)):
 @router.get("/me")
 def me(current_user: str = Depends(get_current_user)):
     users_service = UsersService()
+    user = users_service.get_user(current_user) or {}
     return {
         "username": current_user,
         "is_admin": users_service.is_admin(current_user),
         "voice_control": VOICE_CONTROL_ENABLED,
+        "presence_required": PLAY_REQUIRES_PRESENCE,
+        "voice_linked": bool(user.get("voice_id")),
+        "voice_name": user.get("voice_name"),
     }
+
+@router.get("/")
+def list_users(current_user: str = Depends(get_current_user)):
+    users_service = UsersService()
+    if not users_service.is_admin(current_user):
+        raise HTTPException(status_code=403, detail="Admin access required")
+    return users_service.list_users()
+
+@router.patch("/{username}/voice")
+def set_voice_link(
+    username: str, body: VoiceLink, current_user: str = Depends(get_current_user)
+):
+    users_service = UsersService()
+    if not users_service.is_admin(current_user):
+        raise HTTPException(status_code=403, detail="Admin access required")
+    if not users_service.set_voice_link(username, body.voice_id, body.voice_name):
+        raise HTTPException(status_code=404, detail="User not found")
+    return {"message": "Voice link updated"}
 
 @router.post("/change-password")
 def change_password(body: ChangePassword, current_user: str = Depends(get_current_user)):

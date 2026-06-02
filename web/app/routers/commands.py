@@ -7,6 +7,7 @@ from pydantic import BaseModel, Field
 from app.auth import get_current_user
 from app.services.clips import ClipsService
 from app.services.commands import CommandsService
+from app.services.presence import enforce_presence
 
 router = APIRouter(prefix="/api/commands", tags=["commands"])
 
@@ -43,6 +44,7 @@ def play_clip(
     options: PlayOptions = PlayOptions(),
     current_user: str = Depends(get_current_user),
 ):
+    enforce_presence(current_user, "play")
     clip = ClipsService().get_clip_by_ref(clip_ref)
     if not clip:
         raise HTTPException(status_code=404, detail=f"Clip '{clip_ref}' not found")
@@ -59,6 +61,7 @@ def play_clip(
 
 @router.post("/play-queue")
 def play_queue(body: PlayQueueRequest, current_user: str = Depends(get_current_user)):
+    enforce_presence(current_user, "queue")
     now = time.monotonic()
     elapsed = now - _last_queue_play.get(current_user, 0)
     if elapsed < QUEUE_COOLDOWN_SECONDS:
