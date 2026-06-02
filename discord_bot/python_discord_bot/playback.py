@@ -1,4 +1,5 @@
 import asyncio
+import audioop
 import logging
 import os
 import threading
@@ -15,6 +16,8 @@ AUDIO_DIR = Path(os.getenv("AUDIO_DIR", "audio"))
 # 20ms of 48kHz 16-bit stereo silence (discord.py reads 3840-byte PCM frames).
 SILENCE_FRAME = b"\x00" * 3840
 
+QUEUE_VOICE = "__queue__"
+
 
 def build_source(file_name, speed, shift, volume):
     """Build a Discord audio source for a clip, applying speed/pitch/volume.
@@ -30,63 +33,78 @@ def build_source(file_name, speed, shift, volume):
     )
 
 
-class _WarmStream(discord.AudioSource):
-    """A single, never-ending 48kHz stereo PCM stream.
+class _MixerStream(discord.AudioSource):
+    """A single never-ending 48kHz stereo PCM stream that mixes any number of
+    concurrent "voices" together.
 
-    It emits the current clip's audio when one is set, and silence otherwise.
-    Played once via ``voice_client.play`` and never stopped, so the voice
-    connection stays continuously active ("warm") and Discord's jitter buffer
-    never drains between clips — which is what was delaying the first audio
-    after idle gaps. read() runs in discord.py's player thread, so access to
-    the current clip is guarded by a lock.
+    Each voice is keyed (e.g. by user) so different people's clips overlap, like
+    Discord's native soundboard, while re-setting the same key interrupts and
+    restarts just that voice. Played once and never stopped, so the connection
+    stays warm. read() runs in discord.py's player thread; voices are guarded
+    by a lock.
     """
 
     def __init__(self):
         self._lock = threading.Lock()
-        self._current = None
-        self._on_done = None
+        self._voices = {}  # key -> (source, on_done)
 
-    def set_clip(self, source, on_done):
+    def set_voice(self, key, source, on_done=None):
         with self._lock:
-            old, self._current, self._on_done = self._current, source, on_done
+            old = self._voices.get(key)
+            self._voices[key] = (source, on_done)
         if old is not None:
-            old.cleanup()
+            if old[0] is not None:
+                old[0].cleanup()
+            if old[1] is not None:
+                old[1]()  # unblock whoever was waiting on the replaced voice
 
     def read(self):
         with self._lock:
-            src = self._current
-            on_done = self._on_done
-        if src is not None:
+            items = list(self._voices.items())
+        if not items:
+            return SILENCE_FRAME
+
+        mixed = None
+        ended = []
+        for key, (src, on_done) in items:
             data = src.read()
-            if data:
-                return data
+            if not data:
+                ended.append((key, src, on_done))
+                continue
+            mixed = data if mixed is None else audioop.add(mixed, data, 2)
+
+        for key, src, on_done in ended:
             with self._lock:
-                if self._current is src:
-                    self._current = None
-                    self._on_done = None
+                current = self._voices.get(key)
+                if current is not None and current[0] is src:
+                    del self._voices[key]
             src.cleanup()
             if on_done is not None:
                 on_done()
-        return SILENCE_FRAME
+
+        return mixed if mixed is not None else SILENCE_FRAME
 
     def is_opus(self):
         return False
 
     def cleanup(self):
         with self._lock:
-            current, self._current, self._on_done = self._current, None, None
-        if current is not None:
-            current.cleanup()
+            voices = list(self._voices.values())
+            self._voices.clear()
+        for src, _ in voices:
+            if src is not None:
+                src.cleanup()
 
 
 class GuildPlayer:
-    """Plays queued clips one at a time over a persistent, always-on stream."""
+    """Mixes per-user single plays (overlapping, restartable) with one
+    sequential queue voice, over a persistent always-on stream."""
 
     def __init__(self, voice_client):
         self.voice_client = voice_client
         self.queue = asyncio.Queue()
         self._task = None
-        self._stream = _WarmStream()
+        self._mixer = _MixerStream()
         self.created_at = time.monotonic()
         self.play_count = 0
 
@@ -98,20 +116,40 @@ class GuildPlayer:
     def stop(self):
         if self._task is not None:
             self._task.cancel()
-        self._stream.cleanup()
+        self._mixer.cleanup()
+
+    def play_now(self, voice_key, source):
+        """Play a single clip on this user's voice — overlaps other users,
+        restarts if they were already playing something."""
+        self._begin_stream()
+        self._log_start(time.monotonic())
+        self._mixer.set_voice(voice_key, source, None)
 
     async def enqueue(self, source):
+        """Queue a clip on the shared sequential queue voice."""
         await self.queue.put((source, time.monotonic()))
 
     def _begin_stream(self):
-        # Start the warm (silence) stream if it isn't already running, so the
-        # connection is kept active even while idle.
         if self.voice_client.is_connected() and not self.voice_client.is_playing():
-            self.voice_client.play(self._stream, after=self._stream_ended)
+            self.voice_client.play(self._mixer, after=self._stream_ended)
 
     def _stream_ended(self, error):
         if error:
             log.warning("Warm stream stopped: %s", error)
+
+    def _log_start(self, queued_at):
+        self.play_count += 1
+        try:
+            ws_latency = self.voice_client.average_latency * 1000
+        except Exception:
+            ws_latency = -1
+        log.info(
+            "[timing] player start: %.0fms after enqueue | conn_age=%.0fs plays=%d ws_latency=%.0fms",
+            (time.monotonic() - queued_at) * 1000,
+            time.monotonic() - self.created_at,
+            self.play_count,
+            ws_latency,
+        )
 
     async def _run(self):
         while True:
@@ -120,26 +158,13 @@ class GuildPlayer:
                 if not self.voice_client.is_connected():
                     continue
                 self._begin_stream()
-
-                self.play_count += 1
-                try:
-                    ws_latency = self.voice_client.average_latency * 1000
-                except Exception:
-                    ws_latency = -1
-                log.info(
-                    "[timing] player start: %.0fms after enqueue | conn_age=%.0fs plays=%d ws_latency=%.0fms",
-                    (time.monotonic() - queued_at) * 1000,
-                    time.monotonic() - self.created_at,
-                    self.play_count,
-                    ws_latency,
-                )
-
+                self._log_start(queued_at)
                 finished = asyncio.Event()
 
                 def _done(event=finished):
                     self.voice_client.loop.call_soon_threadsafe(event.set)
 
-                self._stream.set_clip(source, _done)
+                self._mixer.set_voice(QUEUE_VOICE, source, _done)
                 await finished.wait()
             except asyncio.CancelledError:
                 raise
