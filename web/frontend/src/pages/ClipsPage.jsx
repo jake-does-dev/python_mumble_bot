@@ -132,6 +132,21 @@ export default function ClipsPage() {
 
   const cooldownRemaining = Math.max(0, Math.ceil((queueCooldownUntil - now) / 1000))
 
+  // Collapse consecutive plays of the same clip by the same person into a single
+  // entry with a count (e.g. "balls-q ×11") so spamming doesn't flood the list.
+  const groupedHistory = useMemo(() => {
+    const groups = []
+    for (const entry of history) {
+      const last = groups[groups.length - 1]
+      if (last && last.clip_name === entry.clip_name && last.requested_by === entry.requested_by) {
+        last.count += 1
+      } else {
+        groups.push({ ...entry, count: 1 })
+      }
+    }
+    return groups
+  }, [history])
+
   const filtered = useMemo(() => {
     const q = search.toLowerCase()
     return clips
@@ -489,9 +504,9 @@ export default function ClipsPage() {
                 ? <p className={styles.sidebarEmpty}>Nothing played yet</p>
                 : (
                   <ol className={styles.historyList}>
-                    {history.reduce((acc, entry, i) => {
+                    {groupedHistory.reduce((acc, entry, i) => {
                       const label = dayLabel(entry.played_at)
-                      const prevLabel = i > 0 ? dayLabel(history[i - 1].played_at) : null
+                      const prevLabel = i > 0 ? dayLabel(groupedHistory[i - 1].played_at) : null
                       if (label !== prevLabel) {
                         acc.push(
                           <li key={`day-${label}`} className={styles.daySeparator}>{label}</li>
@@ -499,7 +514,10 @@ export default function ClipsPage() {
                       }
                       acc.push(
                         <li key={i} className={styles.historyItem}>
-                          <span className={styles.historyName} onClick={() => setSearch(entry.clip_name)} title="Search for this clip">{entry.clip_name}</span>
+                          <span className={styles.historyNameRow}>
+                            <span className={styles.historyName} onClick={() => setSearch(entry.clip_name)} title="Search for this clip">{entry.clip_name}</span>
+                            {entry.count > 1 && <span className={styles.historyCount}>×{entry.count}</span>}
+                          </span>
                           <span className={styles.historyMeta}>
                             {entry.requested_by} · {timeAgo(entry.played_at)}
                           </span>

@@ -365,6 +365,13 @@
   gap: 2px;
 }
 
+.historyNameRow {
+  display: flex;
+  align-items: baseline;
+  gap: 0.4rem;
+  min-width: 0;
+}
+
 .historyName {
   font-size: 0.875rem;
   color: var(--text-h);
@@ -374,6 +381,17 @@
   text-overflow: ellipsis;
   cursor: pointer;
   transition: color 0.15s;
+}
+
+.historyCount {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--accent);
+  background: var(--accent-bg);
+  border: 1px solid var(--accent-border);
+  border-radius: 999px;
+  padding: 0 6px;
+  flex-shrink: 0;
 }
 
 .historyName:hover {
