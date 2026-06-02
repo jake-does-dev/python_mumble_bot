@@ -13,3 +13,23 @@ def get_stats(
     current_user: str = Depends(get_current_user),
 ):
     return StatsService().get_stats(period=period, tz_offset=tz_offset)
+
+
+@router.get("/user/{username}")
+def get_user_stats(
+    username: str,
+    period: str = "7d",
+    tz_offset: int = 0,
+    current_user: str = Depends(get_current_user),
+):
+    return StatsService().get_user_stats(username, period=period, tz_offset=tz_offset)
+
+
+@router.get("/clip/{name}")
+def get_clip_stats(
+    name: str,
+    period: str = "7d",
+    tz_offset: int = 0,
+    current_user: str = Depends(get_current_user),
+):
+    return StatsService().get_clip_stats(name, period=period, tz_offset=tz_offset)

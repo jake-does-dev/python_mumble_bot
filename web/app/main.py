@@ -20,6 +20,33 @@ app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 def create_indexes():
     db = get_db()
     db.pending_commands.create_index("created_at", expireAfterSeconds=PENDING_COMMANDS_TTL_SECONDS)
+    # play_log is the durable, append-only stats source (no TTL).
+    db.play_log.create_index("played_at")
+    _backfill_play_log(db)
+
+
+def _backfill_play_log(db):
+    """Seed play_log from existing (not-yet-expired) pending_commands once, so
+    stats aren't empty on first deploy."""
+    if db.play_log.estimated_document_count() > 0:
+        return
+    docs = []
+    for c in db.pending_commands.find(
+        {"type": {"$in": ["play", "queue_play"]}},
+        {"clip_ref": 1, "clip_name": 1, "requested_by": 1, "created_at": 1, "pitch": 1, "speed": 1, "_id": 0},
+    ):
+        if not c.get("clip_ref") or not c.get("created_at"):
+            continue
+        docs.append({
+            "clip_ref": c["clip_ref"],
+            "clip_name": c.get("clip_name") or c["clip_ref"],
+            "requested_by": c.get("requested_by") or "unknown",
+            "pitch": c.get("pitch", 0),
+            "speed": c.get("speed", 1.0),
+            "played_at": c["created_at"],
+        })
+    if docs:
+        db.play_log.insert_many(docs)
 
 app.add_middleware(
     CORSMiddleware,
