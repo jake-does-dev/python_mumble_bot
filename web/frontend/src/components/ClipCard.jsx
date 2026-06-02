@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from 'react'
 import api from '../api'
+import TrimModal from './TrimModal'
 import styles from './ClipCard.module.css'
 
 const PITCH_MIN = -12
@@ -51,7 +52,7 @@ function pitchLabel(v) {
   return `${v > 0 ? '+' : ''}${v} st`
 }
 
-export default function ClipCard({ clip, onToggleFavourite, onPlay, onDelete, onAddToQueue, onEdit, onVote, username = null, playing, isAdmin = false, view = 'grid' }) {
+export default function ClipCard({ clip, onToggleFavourite, onPlay, onDelete, onAddToQueue, onEdit, onVote, onTrimmed, username = null, playing, isAdmin = false, view = 'grid' }) {
   const [pitch, setPitch] = useState(() => loadSetting(clip.identifier, 'pitch', 0))
   const [speed, setSpeed] = useState(() => loadSetting(clip.identifier, 'speed', 1))
   const [confirmDelete, setConfirmDelete] = useState(false)
@@ -60,6 +61,7 @@ export default function ClipCard({ clip, onToggleFavourite, onPlay, onDelete, on
   const [editTags, setEditTags] = useState((clip.tags || []).join(', '))
   const [editError, setEditError] = useState(null)
   const [previewing, setPreviewing] = useState(false)
+  const [trimming, setTrimming] = useState(false)
   const nameInnerRef = useRef(null)
   const audioRef = useRef(null)
   const urlRef = useRef(null)
@@ -154,6 +156,7 @@ export default function ClipCard({ clip, onToggleFavourite, onPlay, onDelete, on
             placeholder="tags, comma, separated"
           />
           {editError && <span className={styles.editError}>{editError}</span>}
+          <button type="button" className={styles.trimBtn} onClick={() => setTrimming(true)}>✂ Trim audio…</button>
           <div className={styles.editActions}>
             <button type="button" className={styles.editCancel} onClick={() => setEditing(false)}>Cancel</button>
             <button type="button" className={styles.editSave} onClick={saveEdit}>Save</button>
@@ -280,6 +283,20 @@ export default function ClipCard({ clip, onToggleFavourite, onPlay, onDelete, on
           {playing ? '…' : '▶'}
         </button>
       </div>
+
+      {trimming && (
+        <TrimModal
+          clip={clip}
+          onClose={() => setTrimming(false)}
+          onTrimmed={(updated) => {
+            // Bust the cached preview so it refetches the trimmed audio.
+            if (audioRef.current) { audioRef.current.pause(); audioRef.current = null }
+            if (urlRef.current) { URL.revokeObjectURL(urlRef.current); urlRef.current = null }
+            setPreviewing(false)
+            if (onTrimmed) onTrimmed(clip.identifier, updated)
+          }}
+        />
+      )}
     </div>
   )
 }

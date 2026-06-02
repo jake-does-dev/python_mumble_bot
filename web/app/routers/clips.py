@@ -25,6 +25,11 @@ class VoteRequest(BaseModel):
     value: int
 
 
+class TrimRequest(BaseModel):
+    start: float
+    end: float
+
+
 @router.get("/")
 def get_clips(
     search: Optional[str] = None,
@@ -97,6 +102,24 @@ def vote_clip(
     current_user: str = Depends(get_current_user),
 ):
     return VotesService().set_vote(current_user, identifier, body.value)
+
+
+@router.post("/{identifier}/trim")
+def trim_clip(
+    identifier: str,
+    body: TrimRequest,
+    current_user: str = Depends(get_current_user),
+):
+    is_admin = UsersService().is_admin(current_user)
+    return ClipsService().trim_clip(
+        identifier, current_user, is_admin, body.start, body.end
+    )
+
+
+@router.post("/{identifier}/revert")
+def revert_clip(identifier: str, current_user: str = Depends(get_current_user)):
+    is_admin = UsersService().is_admin(current_user)
+    return ClipsService().revert_clip(identifier, current_user, is_admin)
 
 
 @router.get("/{identifier}/audio")

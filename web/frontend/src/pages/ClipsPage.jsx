@@ -215,6 +215,12 @@ export default function ClipsPage() {
     api.get('/api/clips/tags').then(r => setTags(r.data)).catch(() => {})
   }
 
+  function handleTrimmed(identifier, updatedClip) {
+    setClips(prev => prev.map(c =>
+      c.identifier === identifier ? { ...c, ...updatedClip } : c
+    ))
+  }
+
   function handleVote(identifier, value) {
     api.post(`/api/clips/${identifier}/vote`, { value })
       .then(res => {
@@ -452,6 +458,7 @@ export default function ClipsPage() {
                       onAddToQueue={handleAddToQueue}
                       onEdit={handleEdit}
                       onVote={handleVote}
+                      onTrimmed={handleTrimmed}
                       username={username}
                       playing={playingId === clip.identifier}
                       isAdmin={isAdmin}
