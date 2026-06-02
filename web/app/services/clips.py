@@ -86,6 +86,7 @@ class ClipsService:
             query["$or"] = [
                 {"name": {"$regex": search, "$options": "i"}},
                 {"identifier": {"$regex": search, "$options": "i"}},
+                {"tags": {"$regex": search, "$options": "i"}},
             ]
         if tag:
             query["tags"] = tag
