@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo, useCallback } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
+import { useTheme } from '../context/ThemeContext'
 import api from '../api'
 import ClipCard from '../components/ClipCard'
 import UploadPanel from '../components/UploadPanel'
@@ -36,6 +37,7 @@ function dayLabel(isoString) {
 
 export default function ClipsPage() {
   const { logout } = useAuth()
+  const { theme, toggleTheme } = useTheme()
   const navigate = useNavigate()
 
   const [clips, setClips] = useState([])
@@ -304,6 +306,13 @@ export default function ClipsPage() {
       <header className={styles.header}>
         <span className={styles.title}>Python Mumble Bot</span>
         <div className={styles.headerActions}>
+          <button
+            className={styles.themeToggle}
+            onClick={toggleTheme}
+            title={theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'}
+          >
+            {theme === 'dark' ? '☀' : '☾'}
+          </button>
           <Link to="/stats" className={styles.statsLink}>📊 Stats</Link>
           <button className={styles.logout} onClick={handleLogout}>Sign out</button>
         </div>

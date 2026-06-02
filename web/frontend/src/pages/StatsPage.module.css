@@ -41,6 +41,29 @@
   color: var(--text-h);
 }
 
+.headerActions {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.themeToggle {
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  font-size: 0.95rem;
+  line-height: 1;
+  padding: 4px 10px;
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s;
+}
+
+.themeToggle:hover {
+  border-color: var(--accent-border);
+  color: var(--accent);
+}
+
 .logout {
   background: transparent;
   border: 1px solid var(--border);
