@@ -74,6 +74,18 @@
   line-height: 1.3;
 }
 
+.nameClickable {
+  cursor: pointer;
+}
+
+.nameClickable:hover .nameInner {
+  color: var(--accent);
+}
+
+.namePreviewing .nameInner {
+  color: var(--accent);
+}
+
 .card:hover .nameInner[data-scrollable] {
   animation: marquee 1.8s ease-in-out infinite alternate;
 }

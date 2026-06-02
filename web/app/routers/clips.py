@@ -2,10 +2,11 @@ from pathlib import Path
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
 from app.auth import get_current_user
-from app.services.clips import ClipsService
+from app.services.clips import AUDIO_DIR, ClipsService
 from app.services.favourites import FavouritesService
 from app.services.users import UsersService
 from app.services.votes import VotesService
@@ -96,6 +97,18 @@ def vote_clip(
     current_user: str = Depends(get_current_user),
 ):
     return VotesService().set_vote(current_user, identifier, body.value)
+
+
+@router.get("/{identifier}/audio")
+def clip_audio(identifier: str, current_user: str = Depends(get_current_user)):
+    clip = ClipsService().get_clip_by_ref(identifier)
+    if not clip:
+        raise HTTPException(404, f"Clip '{identifier}' not found")
+    path = AUDIO_DIR / clip["file"]
+    if not path.exists():
+        raise HTTPException(404, "Audio file not found")
+    media_type = "audio/mpeg" if path.suffix.lower() == ".mp3" else "audio/wav"
+    return FileResponse(path, media_type=media_type)
 
 
 @router.delete("/{identifier}")

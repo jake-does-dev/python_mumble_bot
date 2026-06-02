@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from 'react'
+import api from '../api'
 import styles from './ClipCard.module.css'
 
 const PITCH_MIN = -12
@@ -58,9 +59,43 @@ export default function ClipCard({ clip, onToggleFavourite, onPlay, onDelete, on
   const [editName, setEditName] = useState(clip.name)
   const [editTags, setEditTags] = useState((clip.tags || []).join(', '))
   const [editError, setEditError] = useState(null)
+  const [previewing, setPreviewing] = useState(false)
   const nameInnerRef = useRef(null)
+  const audioRef = useRef(null)
+  const urlRef = useRef(null)
 
   const canEdit = isAdmin || (clip.uploaded_by && clip.uploaded_by === username)
+
+  useEffect(() => {
+    return () => {
+      if (audioRef.current) audioRef.current.pause()
+      if (urlRef.current) URL.revokeObjectURL(urlRef.current)
+    }
+  }, [])
+
+  async function togglePreview() {
+    if (previewing && audioRef.current) {
+      audioRef.current.pause()
+      audioRef.current.currentTime = 0
+      setPreviewing(false)
+      return
+    }
+    try {
+      if (!urlRef.current) {
+        const res = await api.get(`/api/clips/${clip.identifier}/audio`, { responseType: 'blob' })
+        urlRef.current = URL.createObjectURL(res.data)
+      }
+      if (!audioRef.current) {
+        audioRef.current = new Audio(urlRef.current)
+        audioRef.current.addEventListener('ended', () => setPreviewing(false))
+      }
+      audioRef.current.currentTime = 0
+      await audioRef.current.play()
+      setPreviewing(true)
+    } catch {
+      setPreviewing(false)
+    }
+  }
 
   function startEdit() {
     setEditName(clip.name)
@@ -127,8 +162,15 @@ export default function ClipCard({ clip, onToggleFavourite, onPlay, onDelete, on
       ) : (
         <div className={styles.info}>
           <div className={styles.nameRow}>
-            <span className={styles.name}>
-              <span className={styles.nameInner} ref={nameInnerRef}>{clip.name}</span>
+            <span
+              className={`${styles.name} ${styles.nameClickable} ${previewing ? styles.namePreviewing : ''}`}
+              onClick={togglePreview}
+              title="Click to preview in your browser"
+              role="button"
+            >
+              <span className={styles.nameInner} ref={nameInnerRef}>
+                {previewing ? '⏸ ' : ''}{clip.name}
+              </span>
             </span>
             <span className={styles.identifier}>{clip.identifier}</span>
           </div>
