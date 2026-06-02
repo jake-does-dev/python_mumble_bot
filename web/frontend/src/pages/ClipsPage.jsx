@@ -55,6 +55,7 @@ export default function ClipsPage() {
   const [view, setView] = useState(() => localStorage.getItem('pmb_view') || 'grid')
   const [sort, setSort] = useState(() => localStorage.getItem('pmb_sort') || 'alpha')
   const [uploadOpen, setUploadOpen] = useState(false)
+  const [tagsExpanded, setTagsExpanded] = useState(() => localStorage.getItem('pmb_tags_expanded') !== 'false')
 
   const [sidebarTab, setSidebarTab] = useState('history')
   const [queues, setQueues] = useState(loadQueues)
@@ -69,6 +70,15 @@ export default function ClipsPage() {
   function handleSetSort(v) {
     setSort(v)
     localStorage.setItem('pmb_sort', v)
+  }
+
+  function handleToggleTags() {
+    setTagsExpanded(v => {
+      const next = !v
+      localStorage.setItem('pmb_tags_expanded', String(next))
+      if (!next) setActiveTag(null)
+      return next
+    })
   }
 
   const [history, setHistory] = useState([])
@@ -307,6 +317,7 @@ export default function ClipsPage() {
                   placeholder="Search clips…"
                   value={search}
                   onChange={e => setSearch(e.target.value)}
+                  onFocus={() => { setActiveTag(null); setFavouritesOnly(false) }}
                 />
                 {search && (
                   <button className={styles.searchClear} onClick={() => setSearch('')} title="Clear search">✕</button>
@@ -350,11 +361,20 @@ export default function ClipsPage() {
               >
                 ★ Favourites
               </button>
-              {tags.map(tag => (
+              {tags.length > 0 && (
+                <button
+                  className={styles.filterBtn}
+                  onClick={handleToggleTags}
+                  title={tagsExpanded ? 'Hide tags' : 'Show tags'}
+                >
+                  {tagsExpanded ? '▾ Tags' : `▸ Tags (${tags.length})`}
+                </button>
+              )}
+              {tagsExpanded && tags.map(tag => (
                 <button
                   key={tag}
                   className={`${styles.filterBtn} ${activeTag === tag ? styles.active : ''}`}
-                  onClick={() => { setActiveTag(t => t === tag ? null : tag); setFavouritesOnly(false) }}
+                  onClick={() => { setActiveTag(t => t === tag ? null : tag); setFavouritesOnly(false); setSearch('') }}
                 >
                   {tag}
                 </button>
