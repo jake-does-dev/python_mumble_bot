@@ -1,6 +1,8 @@
 import asyncio
+import datetime
 import logging
 import random
+import time
 
 import discord
 from discord import app_commands
@@ -80,6 +82,8 @@ class DiscordBot(commands.Bot):
     def get_player(self, voice_client):
         player = self.players.get(voice_client.guild.id)
         if player is None or player.voice_client is not voice_client:
+            if player is not None:
+                player.stop()
             player = playback.GuildPlayer(voice_client)
             self.players[voice_client.guild.id] = player
         player.start(self.loop)
@@ -93,7 +97,13 @@ class DiscordBot(commands.Bot):
 
     async def play_file(self, voice_client, file_name, speed, shift):
         volume = await asyncio.to_thread(self.mongo.get_volume)
+        t = time.monotonic()
         source = playback.build_source(file_name, speed, shift, volume)
+        log.info(
+            "[timing] ffmpeg spawn for %s: %.0fms",
+            file_name,
+            (time.monotonic() - t) * 1000,
+        )
         player = self.get_player(voice_client)
         await player.enqueue(source)
 
@@ -122,9 +132,10 @@ class DiscordBot(commands.Bot):
             return
         voice_client = channel.guild.voice_client
         if voice_client is None:
-            await channel.connect()
+            voice_client = await channel.connect()
         elif voice_client.channel != channel:
             await voice_client.move_to(channel)
+        self.get_player(voice_client)
 
     async def _publish_voice_state(self):
         guild = self._target_guild()
@@ -216,6 +227,15 @@ class DiscordBot(commands.Bot):
         speed = float(command.get("speed", 1.0))
         pitch = float(command.get("pitch", 0))
 
+        created = command.get("created_at")
+        if isinstance(created, datetime.datetime):
+            waited = (datetime.datetime.utcnow() - created).total_seconds() * 1000
+            log.info(
+                "[timing] %s waited %.0fms in pending queue",
+                command.get("clip_ref"),
+                waited,
+            )
+
         if cmd_type == "play":
             name = command.get("clip_name") or command.get("clip_ref")
             await self.announce(
@@ -224,11 +244,17 @@ class DiscordBot(commands.Bot):
                 )
             )
 
+        t0 = time.monotonic()
         doc = await asyncio.to_thread(self.resolve_clip, command["clip_ref"])
         if doc is None:
             log.warning("Clip not found: %s", command.get("clip_ref"))
             return
         await self.play_file(voice_client, doc["file"], speed, pitch)
+        log.info(
+            "[timing] %s resolve+build+enqueue %.0fms",
+            command["clip_ref"],
+            (time.monotonic() - t0) * 1000,
+        )
 
 
 def register_commands(bot):
