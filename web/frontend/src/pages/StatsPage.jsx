@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
+import { useTheme } from '../context/ThemeContext'
 import api from '../api'
 import styles from './StatsPage.module.css'
 
@@ -89,6 +90,7 @@ function Heatmap({ grid }) {
 
 export default function StatsPage() {
   const { logout } = useAuth()
+  const { theme, toggleTheme } = useTheme()
   const navigate = useNavigate()
   const [period, setPeriod] = useState('7d')
   const [data, setData] = useState(null)
@@ -124,7 +126,16 @@ export default function StatsPage() {
           <Link to="/" className={styles.navLink}>← Clips</Link>
           <span className={styles.title}>Statistics</span>
         </div>
-        <button className={styles.logout} onClick={handleLogout}>Sign out</button>
+        <div className={styles.headerActions}>
+          <button
+            className={styles.themeToggle}
+            onClick={toggleTheme}
+            title={theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'}
+          >
+            {theme === 'dark' ? '☀' : '☾'}
+          </button>
+          <button className={styles.logout} onClick={handleLogout}>Sign out</button>
+        </div>
       </header>
 
       <div className={styles.periodBar}>
