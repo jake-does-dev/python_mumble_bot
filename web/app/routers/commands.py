@@ -16,6 +16,25 @@ router = APIRouter(prefix="/api/commands", tags=["commands"])
 QUEUE_COOLDOWN_SECONDS = 30
 _last_queue_play = {}
 
+# Per-user burst limit on single plays (anti-spam for held/mashed pad keys).
+PLAY_RATE_MAX = 10
+PLAY_RATE_WINDOW = 30  # seconds
+_play_times = {}  # username -> list[monotonic timestamps within the window]
+
+
+def _check_play_rate(user: str) -> None:
+    now = time.monotonic()
+    times = [t for t in _play_times.get(user, []) if now - t < PLAY_RATE_WINDOW]
+    if len(times) >= PLAY_RATE_MAX:
+        retry = int(PLAY_RATE_WINDOW - (now - times[0])) + 1
+        _play_times[user] = times
+        raise HTTPException(
+            status_code=429,
+            detail=f"Slow down — max {PLAY_RATE_MAX} plays per {PLAY_RATE_WINDOW}s (wait {retry}s)",
+        )
+    times.append(now)
+    _play_times[user] = times
+
 
 class PlayOptions(BaseModel):
     pitch: int = Field(default=0, ge=-12, le=12)
@@ -46,6 +65,7 @@ def play_clip(
     current_user: str = Depends(get_current_user),
 ):
     enforce_presence(current_user, "play")
+    _check_play_rate(current_user)
     clip = ClipsService().get_clip_by_ref(clip_ref)
     if not clip:
         raise HTTPException(status_code=404, detail=f"Clip '{clip_ref}' not found")

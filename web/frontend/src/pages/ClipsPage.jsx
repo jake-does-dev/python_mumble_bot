@@ -7,6 +7,7 @@ import ClipCard from '../components/ClipCard'
 import UploadPanel from '../components/UploadPanel'
 import QueuePanel from '../components/QueuePanel'
 import VoicePanel from '../components/VoicePanel'
+import PadBoard from '../components/PadBoard'
 import styles from './ClipsPage.module.css'
 
 const newId = () => Date.now().toString(36) + Math.random().toString(36).slice(2)
@@ -147,6 +148,12 @@ export default function ClipsPage() {
     return groups
   }, [history])
 
+  // Pad board = your favourites (stable alpha order so hotkeys don't shift).
+  const pads = useMemo(
+    () => clips.filter(c => c.is_favourite).sort((a, b) => a.name.localeCompare(b.name)),
+    [clips]
+  )
+
   const filtered = useMemo(() => {
     const q = search.toLowerCase()
     return clips
@@ -220,7 +227,7 @@ export default function ClipsPage() {
       await api.post(`/api/commands/play/${identifier}`, { pitch, speed })
       setTimeout(fetchHistory, 1500)
     } catch (err) {
-      if (err.response?.status === 403) {
+      if (err.response?.status === 403 || err.response?.status === 429) {
         showActionToast(err.response.data?.detail || 'Not allowed to play right now')
       }
     } finally {
@@ -423,6 +430,7 @@ export default function ClipsPage() {
               <div className={styles.viewToggle}>
                 <button className={`${styles.viewBtn} ${view === 'grid' ? styles.active : ''}`} onClick={() => handleSetView('grid')} title="Grid view">⊞</button>
                 <button className={`${styles.viewBtn} ${view === 'list' ? styles.active : ''}`} onClick={() => handleSetView('list')} title="List view">☰</button>
+                <button className={`${styles.viewBtn} ${view === 'pads' ? styles.active : ''}`} onClick={() => handleSetView('pads')} title="Pad board (favourites + hotkeys)">▦</button>
               </div>
               <button
                 className={`${styles.viewBtn} ${uploadOpen ? styles.active : ''}`}
@@ -486,7 +494,11 @@ export default function ClipsPage() {
             {loading && <p className={styles.status}>Loading…</p>}
             {error && <p className={styles.error}>{error}</p>}
 
-            {!loading && !error && (
+            {!loading && !error && view === 'pads' && (
+              <PadBoard pads={pads} onPlay={handlePlay} playingId={playingId} />
+            )}
+
+            {!loading && !error && view !== 'pads' && (
               <>
                 <p className={styles.count}>{filtered.length} clip{filtered.length !== 1 ? 's' : ''}</p>
                 <div className={view === 'grid' ? styles.grid : styles.list}>
