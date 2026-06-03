@@ -105,6 +105,13 @@ export default function HelpModal({ onClose, isAdmin = false, voiceControl = fal
             </Section>
           )}
 
+          <Section icon="♻" title="Bot laggy or stuck?">
+            Hit <b>♻ Restart bot</b> (then confirm) to bounce it — it exits, comes straight back,
+            and <b>rejoins the channel</b> it was in within a few seconds. Handy if playback gets
+            laggy after the bot's been up a long time. It also restarts itself automatically twice
+            a day. Everyone in the app sees a notice when it happens.
+          </Section>
+
           <Section icon="📊" title="Stats">
             The <b>📊 Stats</b> page shows what's popular: clip of the week, a clickable clip cloud,
             top players, an activity heatmap, and drill-downs — click any clip or player to see their

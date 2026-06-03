@@ -135,6 +135,33 @@ class CommandsService:
             }
         )
 
+    def last_restart(self) -> dict:
+        doc = self.db.pending_commands.find_one(
+            {"type": "restart"}, sort=[("created_at", pymongo.DESCENDING)]
+        )
+        if not doc:
+            return {"at": None, "by": None}
+        return {
+            "at": doc["created_at"].isoformat() + "Z",
+            "by": doc.get("requested_by"),
+        }
+
+    def enqueue_restart(self, requested_by: str) -> None:
+        # Cancel anything still queued (it shouldn't fire on a freshly-restarted
+        # bot), then ask the bot to exit so Docker restarts it and it rejoins.
+        self.db.pending_commands.update_many(
+            {"status": "pending", "type": {"$in": ["play", "queue_play"]}},
+            {"$set": {"status": "done"}},
+        )
+        self.db.pending_commands.insert_one(
+            {
+                "type": "restart",
+                "requested_by": requested_by,
+                "status": "pending",
+                "created_at": datetime.utcnow(),
+            }
+        )
+
     def enqueue_join(self, channel_id: str, requested_by: str) -> None:
         self.db.pending_commands.insert_one(
             {

@@ -1,6 +1,7 @@
 import asyncio
 import datetime
 import logging
+import os
 import random
 import time
 
@@ -144,6 +145,52 @@ class DiscordBot(commands.Bot):
         elif voice_client.channel != channel:
             await voice_client.move_to(channel)
         self.get_player(voice_client)
+        # Remember where to rejoin after a restart (manual or the twice-daily one).
+        await self._set_rejoin(str(channel.id))
+
+    async def _set_rejoin(self, channel_id):
+        await asyncio.to_thread(
+            lambda: self.mongo.db.voice_state.update_one(
+                {"_id": "state"},
+                {"$set": {"rejoin_channel_id": channel_id}},
+                upsert=True,
+            )
+        )
+
+    async def _rejoin_last_channel(self):
+        # On startup, rejoin the channel the bot was last in so a restart is
+        # seamless. join_channel() still refuses an empty channel.
+        try:
+            state = await asyncio.to_thread(
+                lambda: self.mongo.db.voice_state.find_one({"_id": "state"})
+            )
+            channel_id = state.get("rejoin_channel_id") if state else None
+            if channel_id:
+                log.info("Rejoining last channel %s on startup", channel_id)
+                await self.join_channel(channel_id)
+                if self.active_voice_client() is None:
+                    # Target was empty/gone — don't leave a ghost behind.
+                    await self._clear_voice_ghost()
+                await self._publish_voice_state()
+            else:
+                # Nothing to rejoin — clear any stale voice session a previous
+                # unclean shutdown (hard exit / SIGKILL / crash) may have left, so
+                # we don't show as a "ghost" sitting in a channel.
+                await self._clear_voice_ghost()
+        except Exception:
+            log.exception("Rejoin on startup failed")
+
+    async def _clear_voice_ghost(self):
+        guild = self._target_guild()
+        if guild is None:
+            return
+        # A bot has a single voice state per guild; setting channel=None forces
+        # Discord to drop any connection it still thinks we have, even though
+        # this fresh process has no VoiceClient of its own.
+        try:
+            await guild.change_voice_state(channel=None)
+        except Exception:
+            log.exception("Clearing stale voice state on startup failed")
 
     async def _publish_voice_state(self):
         guild = self._target_guild()
@@ -211,6 +258,7 @@ class DiscordBot(commands.Bot):
         if voice_client is not None and voice_client.is_connected():
             if not any(not m.bot for m in voice_client.channel.members):
                 await voice_client.disconnect()
+                await self._set_rejoin(None)  # don't rejoin an abandoned channel
         await self._publish_voice_state()
 
     @tasks.loop(seconds=0.1)
@@ -227,6 +275,7 @@ class DiscordBot(commands.Bot):
     @poll_commands.before_loop
     async def _before_poll(self):
         await self.wait_until_ready()
+        await self._rejoin_last_channel()
 
     async def _handle_pending(self, command):
         cmd_type = command.get("type", "play")
@@ -241,8 +290,35 @@ class DiscordBot(commands.Bot):
             voice_client = self.active_voice_client()
             if voice_client is not None:
                 await voice_client.disconnect()
+            await self._set_rejoin(None)
             await self._publish_voice_state()
             return
+        if cmd_type == "restart":
+            # Mark done now: os._exit() below skips the poll loop's `finally`, so
+            # without this the command stays pending and the bot would restart
+            # in a loop. Persist the current channel so we rejoin it on boot.
+            await asyncio.to_thread(self.mongo.mark_command_done, command["_id"])
+            voice_client = self.active_voice_client()
+            if voice_client is not None:
+                await self._set_rejoin(str(voice_client.channel.id))
+            await self.announce(
+                "♻ **{0}** restarted the bot".format(
+                    command.get("requested_by", "web")
+                )
+            )
+            # Leave voice cleanly first so Discord drops us straight away (a hard
+            # exit would leave a lingering "ghost" bot in the channel), then exit
+            # for Docker to bring us back — we rejoin on boot.
+            for vc in list(self.voice_clients):
+                try:
+                    await asyncio.wait_for(vc.disconnect(force=True), timeout=5)
+                except Exception:
+                    log.exception("Voice disconnect during restart failed")
+            log.info(
+                "Restart requested by %s; exiting for Docker to bring me back",
+                command.get("requested_by"),
+            )
+            os._exit(0)
         if cmd_type == "stop":
             voice_client = self.active_voice_client()
             if voice_client is not None:

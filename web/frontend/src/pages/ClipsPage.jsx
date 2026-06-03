@@ -190,36 +190,61 @@ export default function ClipsPage() {
     setTimeout(() => setActionToast(null), 3500)
   }
 
-  // Broadcast: every client polls for the latest stop and toasts when a new one
-  // appears, so all users see "X stopped playback" — not just whoever clicked.
+  // Broadcast: every client polls for the latest stop/restart and toasts when a
+  // new one appears, so all users see it — not just whoever clicked.
   const lastStopRef = useRef(undefined)
-  const checkStopRef = useRef(() => {})
-  checkStopRef.current = async () => {
+  const lastRestartRef = useRef(undefined)
+  const checkBroadcastsRef = useRef(() => {})
+  checkBroadcastsRef.current = async () => {
     try {
-      const res = await api.get('/api/commands/last-stop')
-      const at = res.data.at
-      if (!at) return
-      if (lastStopRef.current === undefined) { lastStopRef.current = at; return }
-      if (at > lastStopRef.current) {
-        lastStopRef.current = at
-        const by = res.data.by
-        showActionToast(by === username ? '⏹ You stopped playback' : `⏹ ${by} stopped playback`)
+      const [stopRes, restartRes] = await Promise.all([
+        api.get('/api/commands/last-stop'),
+        api.get('/api/commands/last-restart'),
+      ])
+      const stopAt = stopRes.data.at
+      if (stopAt) {
+        if (lastStopRef.current === undefined) lastStopRef.current = stopAt
+        else if (stopAt > lastStopRef.current) {
+          lastStopRef.current = stopAt
+          const by = stopRes.data.by
+          showActionToast(by === username ? '⏹ You stopped playback' : `⏹ ${by} stopped playback`)
+        }
+      }
+      const restartAt = restartRes.data.at
+      if (restartAt) {
+        if (lastRestartRef.current === undefined) lastRestartRef.current = restartAt
+        else if (restartAt > lastRestartRef.current) {
+          lastRestartRef.current = restartAt
+          const by = restartRes.data.by
+          showActionToast(by === username ? '♻ You restarted the bot — back in a few seconds' : `♻ ${by} restarted the bot — back in a few seconds`)
+        }
       }
     } catch { /* ignore */ }
   }
 
   useEffect(() => {
-    checkStopRef.current()
-    const id = setInterval(() => checkStopRef.current(), 3000)
+    checkBroadcastsRef.current()
+    const id = setInterval(() => checkBroadcastsRef.current(), 3000)
     return () => clearInterval(id)
   }, [])
 
   async function handleStop() {
     try {
       await api.post('/api/commands/stop')
-      await checkStopRef.current()
+      await checkBroadcastsRef.current()
     } catch (err) {
       showActionToast(err.response?.data?.detail || 'Could not stop playback')
+    }
+  }
+
+  const [confirmRestart, setConfirmRestart] = useState(false)
+  async function handleRestart() {
+    setConfirmRestart(false)
+    try {
+      await api.post('/api/commands/restart')
+      await checkBroadcastsRef.current()
+    } catch (err) {
+      showActionToast(err.response?.data?.detail || 'Could not restart the bot')
     }
   }
 
@@ -456,6 +481,20 @@ export default function ClipsPage() {
                   title="Stop all playback now (admin)"
                 >
                   ⏹ Stop
+                </button>
+              )}
+              {confirmRestart ? (
+                <span className={styles.restartConfirm}>
+                  <button className={styles.restartBtn} onClick={handleRestart} title="Confirm restart">♻ Confirm?</button>
+                  <button className={styles.restartCancel} onClick={() => setConfirmRestart(false)} title="Cancel">✕</button>
+                </span>
+              ) : (
+                <button
+                  className={styles.restartBtn}
+                  onClick={() => setConfirmRestart(true)}
+                  title="Restart the bot if it's laggy or stuck — it'll rejoin your channel"
+                >
+                  ♻ Restart bot
                 </button>
               )}
             </div>

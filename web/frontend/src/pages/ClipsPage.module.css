@@ -137,6 +137,45 @@
   color: #fff;
 }
 
+.restartBtn {
+  padding: 4px 12px;
+  border: 1px solid #d97706;
+  border-radius: 6px;
+  background: transparent;
+  color: #d97706;
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background 0.15s, color 0.15s;
+}
+
+.restartBtn:hover {
+  background: #d97706;
+  color: #fff;
+}
+
+.restartConfirm {
+  display: inline-flex;
+  gap: 2px;
+  flex-shrink: 0;
+}
+
+.restartCancel {
+  padding: 4px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text);
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+
+.restartCancel:hover {
+  border-color: var(--text);
+  color: var(--text-h);
+}
+
 .viewToggle {
   display: flex;
   gap: 2px;
