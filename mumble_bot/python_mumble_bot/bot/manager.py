@@ -422,6 +422,17 @@ class CommandManager(EventManager):
             self.playback_manager.stop()
             return
 
+        if cmd_type == "restart":
+            # The command is already marked done above, so exiting is safe — no
+            # restart loop. Docker (restart: unless-stopped) brings the bot back
+            # and it reconnects to its channel on startup.
+            self.text_message_manager.process(
+                ChannelTextEvent(
+                    f"<b>{command.get('requested_by', 'web')}</b> restarted the bot"
+                )
+            )
+            os._exit(0)
+
         speed = command.get("speed", 1.0)
         pitch = command.get("pitch", 0)
 

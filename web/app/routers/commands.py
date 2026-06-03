@@ -16,6 +16,11 @@ router = APIRouter(prefix="/api/commands", tags=["commands"])
 QUEUE_COOLDOWN_SECONDS = 30
 _last_queue_play = {}
 
+# Global cooldown on bot restarts — a restart affects everyone, so it's shared
+# across users (not per-user) to stop accidental double-clicks / spam.
+RESTART_COOLDOWN_SECONDS = 60
+_last_restart = 0.0
+
 # Per-user burst limit on single plays (anti-spam for held/mashed pad keys).
 PLAY_RATE_MAX = 10
 PLAY_RATE_WINDOW = 30  # seconds
@@ -93,6 +98,30 @@ def stop_playback(current_user: str = Depends(get_current_user)):
         raise HTTPException(status_code=403, detail="Admin access required")
     CommandsService().enqueue_stop(requested_by=current_user)
     return {"message": "Playback stopped"}
+
+
+@router.get("/last-restart")
+def last_restart(current_user: str = Depends(get_current_user)):
+    # Lets every client detect a restart (broadcast a toast to all users).
+    return CommandsService().last_restart()
+
+
+@router.post("/restart")
+def restart_bot(current_user: str = Depends(get_current_user)):
+    # Any logged-in user can restart the bot if it's misbehaving — it rejoins
+    # the channel it was in. Globally rate-limited.
+    global _last_restart
+    now = time.monotonic()
+    elapsed = now - _last_restart
+    if elapsed < RESTART_COOLDOWN_SECONDS:
+        remaining = int(RESTART_COOLDOWN_SECONDS - elapsed) + 1
+        raise HTTPException(
+            status_code=429,
+            detail=f"The bot was just restarted — wait {remaining}s before trying again",
+        )
+    _last_restart = now
+    CommandsService().enqueue_restart(requested_by=current_user)
+    return {"message": "Restarting the bot"}
 
 
 @router.post("/play-queue")

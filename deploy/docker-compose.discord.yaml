@@ -41,6 +41,28 @@ services:
     volumes:
     - /tank/pmb/discord-audio:/app/audio
 
+  # Restarts disc_bot twice a day (02:00 and 14:00 Europe/London) to shed the
+  # latency that creeps in the longer the voice stream stays warm. A throwaway
+  # docker:cli container running busybox crond against the host Docker socket.
+  disc_bot_restarter:
+    image: docker:cli
+    container_name: disc_bot_restarter
+    restart: unless-stopped
+    depends_on:
+      - disc_bot
+    environment:
+      TZ: Europe/London
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        apk add --no-cache tzdata >/dev/null
+        cp /usr/share/zoneinfo/$$TZ /etc/localtime
+        mkdir -p /etc/crontabs
+        echo '0 2,14 * * * docker restart disc_bot' > /etc/crontabs/root
+        crond -f -l 8 -c /etc/crontabs
+
   disc_web:
     build: ../web
     container_name: disc_web
