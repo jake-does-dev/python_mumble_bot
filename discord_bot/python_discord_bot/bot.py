@@ -1,7 +1,6 @@
 import asyncio
 import datetime
 import logging
-import os
 import random
 import time
 
@@ -127,6 +126,21 @@ class DiscordBot(commands.Bot):
             return self.get_guild(config.GUILD_ID)
         return self.guilds[0] if self.guilds else None
 
+    def _channel_has_humans(self, channel):
+        # Use voice_states (populated straight from Discord's voice events, so
+        # reliable WITHOUT the privileged members intent) rather than
+        # channel.members, which reads the member cache and can come back empty
+        # for a busy channel — that bug made the bot disconnect itself thinking
+        # a full channel was abandoned. Errs toward "occupied" when a member
+        # isn't cached, so we never wrongly leave.
+        for user_id in channel.voice_states:
+            if user_id == self.user.id:
+                continue
+            member = channel.guild.get_member(user_id)
+            if member is None or not member.bot:
+                return True
+        return False
+
     async def join_channel(self, channel_id):
         if not channel_id:
             return
@@ -136,7 +150,7 @@ class DiscordBot(commands.Bot):
             return
         # The bot must never sit in a channel alone — refuse to join one with
         # no human members (on_voice_state_update only handles people leaving).
-        if not any(not m.bot for m in channel.members):
+        if not self._channel_has_humans(channel):
             log.info("Join: %s has no human members; not joining", channel.name)
             return
         voice_client = channel.guild.voice_client
@@ -256,7 +270,11 @@ class DiscordBot(commands.Bot):
             return
         voice_client = member.guild.voice_client
         if voice_client is not None and voice_client.is_connected():
-            if not any(not m.bot for m in voice_client.channel.members):
+            if not self._channel_has_humans(voice_client.channel):
+                log.info(
+                    "Auto-leave: %s has no humans left; disconnecting",
+                    voice_client.channel.name,
+                )
                 await voice_client.disconnect()
                 await self._set_rejoin(None)  # don't rejoin an abandoned channel
         await self._publish_voice_state()
@@ -294,31 +312,44 @@ class DiscordBot(commands.Bot):
             await self._publish_voice_state()
             return
         if cmd_type == "restart":
-            # Mark done now: os._exit() below skips the poll loop's `finally`, so
-            # without this the command stays pending and the bot would restart
-            # in a loop. Persist the current channel so we rejoin it on boot.
-            await asyncio.to_thread(self.mongo.mark_command_done, command["_id"])
+            # A fast in-process reconnect, NOT a process restart: a full exit +
+            # Docker relaunch meant a ~75s blackout. Instead we just drop the
+            # (possibly laggy) warm voice connection, tear down the player so the
+            # mixer stream is rebuilt fresh, and rejoin the same channel — a few
+            # seconds, no downtime. The twice-daily cron still does a real
+            # `docker restart` for a genuine clean slate.
+            requested_by = command.get("requested_by", "web")
             voice_client = self.active_voice_client()
-            if voice_client is not None:
-                await self._set_rejoin(str(voice_client.channel.id))
-            await self.announce(
-                "♻ **{0}** restarted the bot".format(
-                    command.get("requested_by", "web")
+            if voice_client is None:
+                log.info(
+                    "Reconnect requested by %s, but not in a voice channel — nothing to do",
+                    requested_by,
                 )
+                return
+            channel_id = str(voice_client.channel.id)
+            guild_id = voice_client.guild.id
+            await self.announce(
+                "♻ **{0}** reconnected the bot".format(requested_by)
             )
-            # Leave voice cleanly first so Discord drops us straight away (a hard
-            # exit would leave a lingering "ghost" bot in the channel), then exit
-            # for Docker to bring us back — we rejoin on boot.
-            for vc in list(self.voice_clients):
-                try:
-                    await asyncio.wait_for(vc.disconnect(force=True), timeout=5)
-                except Exception:
-                    log.exception("Voice disconnect during restart failed")
             log.info(
-                "Restart requested by %s; exiting for Docker to bring me back",
-                command.get("requested_by"),
+                "Reconnect requested by %s; dropping voice and rejoining %s",
+                requested_by,
+                channel_id,
             )
-            os._exit(0)
+            try:
+                await asyncio.wait_for(voice_client.disconnect(force=True), timeout=5)
+            except Exception:
+                log.exception("Voice disconnect during reconnect failed")
+            player = self.players.pop(guild_id, None)
+            if player is not None:
+                try:
+                    player.stop()  # discard the stale warm mixer stream
+                except Exception:
+                    log.exception("Stopping old player during reconnect failed")
+            await asyncio.sleep(1)  # let Discord register the disconnect first
+            await self.join_channel(channel_id)
+            await self._publish_voice_state()
+            return
         if cmd_type == "stop":
             voice_client = self.active_voice_client()
             if voice_client is not None:
