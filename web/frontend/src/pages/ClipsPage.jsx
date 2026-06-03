@@ -587,7 +587,7 @@ export default function ClipsPage() {
                       acc.push(
                         <li key={i} className={styles.historyItem}>
                           <span className={styles.historyNameRow}>
-                            <span className={styles.historyName} onClick={() => setSearch(entry.clip_name)} title="Search for this clip">{entry.clip_name}</span>
+                            <span className={styles.historyName} onClick={() => { setSearch(entry.clip_name); setActiveTag(null); setFavouritesOnly(false) }} title="Search for this clip">{entry.clip_name}</span>
                             {entry.count > 1 && <span className={styles.historyCount}>×{entry.count}</span>}
                           </span>
                           <span className={styles.historyMeta}>
