@@ -30,6 +30,10 @@ class TrimRequest(BaseModel):
     end: float
 
 
+class GainRequest(BaseModel):
+    gain_db: float
+
+
 @router.get("/")
 def get_clips(
     search: Optional[str] = None,
@@ -114,6 +118,17 @@ def trim_clip(
     return ClipsService().trim_clip(
         identifier, current_user, is_admin, body.start, body.end
     )
+
+
+@router.patch("/{identifier}/gain")
+def set_gain(
+    identifier: str,
+    body: GainRequest,
+    current_user: str = Depends(get_current_user),
+):
+    if not UsersService().is_admin(current_user):
+        raise HTTPException(403, "Admin access required")
+    return ClipsService().set_gain(identifier, body.gain_db)
 
 
 @router.post("/{identifier}/revert")

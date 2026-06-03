@@ -91,6 +91,11 @@ export default function HelpModal({ onClose, isAdmin = false, voiceControl = fal
             change <b>tags</b>, and open <b>✂ Trim audio</b> — drag the handles on the waveform to cut
             the clip, preview the selection, then trim. The original is backed up so you can
             <b> revert</b>. Votes and history are kept.
+            {isAdmin && (
+              <> Admins also get a <b>Volume</b> slider here (−12 to +12 dB) to manually fine-tune
+              a clip that's still too loud or too quiet after loudness normalisation — it's applied
+              live at playback, so it's non-destructive and re-adjustable any time.</>
+            )}
           </Section>
 
           {voiceControl && (

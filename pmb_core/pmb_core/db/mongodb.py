@@ -149,6 +149,14 @@ class MongoInterface:
         file = self._find_file_by_ref(ref)
         return file[FILE]
 
+    def get_gain_db_by_ref(self, ref):
+        # Per-clip volume trim in dB (0 if unset). Never raises — a missing
+        # clip just means no trim.
+        clip = self._find_file_by_ref(ref)
+        if clip is None:
+            return 0
+        return clip.get("gain_db", 0) or 0
+
     def _find_file_by_ref(self, ref):
         if self.clips_collection is None:
             self.refresh()
