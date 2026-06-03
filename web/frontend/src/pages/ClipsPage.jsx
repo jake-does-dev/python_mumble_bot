@@ -263,6 +263,13 @@ export default function ClipsPage() {
     ))
   }
 
+  async function handleGain(identifier, gainDb) {
+    const res = await api.patch(`/api/clips/${identifier}/gain`, { gain_db: gainDb })
+    setClips(prev => prev.map(c =>
+      c.identifier === identifier ? { ...c, ...res.data } : c
+    ))
+  }
+
   function handleVote(identifier, value) {
     api.post(`/api/clips/${identifier}/vote`, { value })
       .then(res => {
@@ -516,6 +523,7 @@ export default function ClipsPage() {
                       onEdit={handleEdit}
                       onVote={handleVote}
                       onTrimmed={handleTrimmed}
+                      onGain={handleGain}
                       username={username}
                       playing={playingId === clip.identifier}
                       isAdmin={isAdmin}

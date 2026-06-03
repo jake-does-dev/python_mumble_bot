@@ -7,6 +7,7 @@ import time
 import discord
 from discord import app_commands
 from discord.ext import commands, tasks
+from pmb_core.audio import transform
 from pmb_core.db.mongodb import MongoInterface
 
 from python_discord_bot import config, playback
@@ -96,9 +97,11 @@ class DiscordBot(commands.Bot):
         )
 
     async def play_file(
-        self, voice_client, file_name, speed, shift, interrupt=False, voice_key=None
+        self, voice_client, file_name, speed, shift, interrupt=False,
+        voice_key=None, gain_db=0,
     ):
         volume = await asyncio.to_thread(self.mongo.get_volume)
+        volume = volume * transform.gain_db_to_multiplier(gain_db)
         t = time.monotonic()
         source = playback.build_source(file_name, speed, shift, volume)
         log.info(
@@ -289,6 +292,7 @@ class DiscordBot(commands.Bot):
             pitch,
             interrupt=(cmd_type == "play"),
             voice_key=command.get("requested_by") or "web",
+            gain_db=doc.get("gain_db", 0),
         )
         log.info(
             "[timing] %s resolve+build+enqueue %.0fms",
@@ -327,6 +331,7 @@ def register_commands(bot):
             pitch_value,
             interrupt=True,
             voice_key=str(interaction.user.id),
+            gain_db=doc.get("gain_db", 0),
         )
         await interaction.followup.send(
             "▶ Playing **{0}** ({1:g}x, {2}s)".format(

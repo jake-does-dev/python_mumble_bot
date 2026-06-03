@@ -281,6 +281,22 @@ class ClipsService:
         shutil.copy2(backup, AUDIO_DIR / clip["file"])
         return self.db.clips.find_one({"identifier": identifier}, {"_id": 0})
 
+    def set_gain(self, identifier: str, gain_db: float) -> dict:
+        # Per-clip volume trim in dB on top of the loudness baseline. Stored as
+        # metadata and applied by the bots at playback — non-destructive, so it
+        # can be re-adjusted any time without touching the file.
+        clip = self.db.clips.find_one({"identifier": identifier})
+        if not clip:
+            raise HTTPException(404, f"Clip '{identifier}' not found")
+        if gain_db < -20 or gain_db > 20:
+            raise HTTPException(400, "Gain must be between -20 and +20 dB")
+
+        gain_db = round(float(gain_db), 1)
+        self.db.clips.update_one(
+            {"identifier": identifier}, {"$set": {"gain_db": gain_db}}
+        )
+        return self.db.clips.find_one({"identifier": identifier}, {"_id": 0})
+
     def delete_clip(self, identifier: str) -> None:
         clip = self.db.clips.find_one({"identifier": identifier})
         if not clip:

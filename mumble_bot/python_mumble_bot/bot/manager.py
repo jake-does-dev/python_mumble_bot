@@ -108,10 +108,13 @@ class PlaybackManager(EventManager):
             event.data, event.playback_speeds, event.semitone_shifts
         ):
             file = self.state_manager.find_audio_clip(ref)
+            gain = transform.gain_db_to_multiplier(
+                self.state_manager.get_clip_gain_db(ref)
+            )
             pcm = transform.transform_audio(
                 file,
                 pitch_filter,
-                self.state_manager.get_volume(),
+                self.state_manager.get_volume() * gain,
                 float(speed[:-1]),
                 float(shift[:-1]),
                 desired_output="pcm",
@@ -445,6 +448,9 @@ class StateManager(EventManager):
 
     def find_audio_clip(self, ref):
         return self.audio_clips_dir.joinpath(self.mongo_interface.get_file_by_ref(ref))
+
+    def get_clip_gain_db(self, ref):
+        return self.mongo_interface.get_gain_db_by_ref(ref)
 
     def get_volume(self):
         return self.mongo_interface.get_volume()

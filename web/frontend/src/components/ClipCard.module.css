@@ -306,6 +306,29 @@
   color: #ef4444;
 }
 
+.gainRow {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.gainLabel {
+  font-size: 0.72rem;
+  color: var(--text-m);
+  display: flex;
+  justify-content: space-between;
+}
+
+.gainLabel strong {
+  color: var(--text-h);
+  font-weight: 600;
+}
+
+.gainSaving {
+  color: var(--text-m);
+  font-style: italic;
+}
+
 .trimBtn {
   padding: 0.35rem 0.5rem;
   border-radius: 6px;
