@@ -1,9 +1,11 @@
+import audioop
 import base64
 import datetime as dt
 import json
 import logging
 import os
 import subprocess as sp
+import threading
 import time
 import wave
 from collections import OrderedDict
@@ -63,11 +65,86 @@ class PlaybackManager(EventManager):
     # PCM. Bounded by total bytes (~10s clip = ~1MB of 48kHz mono PCM).
     PCM_CACHE_MAX_BYTES = 64 * 1024 * 1024
 
+    SAMPLE_RATE = 48000
+    # Keep pymumble's output buffer topped to ~this much. Small = snappy
+    # interrupts/overlap; large enough to ride out the occasional scheduling gap.
+    MIX_TARGET_SECS = 0.04
+
     def __init__(self, mumble, state_manager):
         self.mumble = mumble
         self.state_manager = state_manager
         self._pcm_cache = OrderedDict()
         self._pcm_cache_bytes = 0
+
+        # Software mixer: pymumble has no notion of overlapping voices (its
+        # output is one sequential PCM stream), so we keep our own per-"voice"
+        # buffers and feed pymumble a single pre-mixed stream. A voice is
+        # {pcm, pos}; the mixer thread sums the active ones each frame.
+        self._voices = {}
+        self._mix_lock = threading.Lock()
+        self._mixer_thread = threading.Thread(
+            target=self._mixer_loop, name="pmb-mixer", daemon=True
+        )
+        self._mixer_thread.start()
+
+    def _frame_bytes(self, so):
+        # One packet's worth of mono 16-bit PCM (matches pymumble's chunking).
+        channels = getattr(so, "channels", 1) or 1
+        return int(self.SAMPLE_RATE * so.get_audio_per_packet()) * 2 * channels
+
+    def _mixer_loop(self):
+        while True:
+            try:
+                self._mix_tick()
+            except Exception:
+                log.exception("mixer tick failed")
+            time.sleep(0.005)
+
+    def _mix_tick(self):
+        so = getattr(self.mumble, "sound_output", None)
+        if so is None:
+            return
+        with self._mix_lock:
+            if not self._voices:
+                return
+            frame_bytes = self._frame_bytes(so)
+            guard = 0
+            # Top the output buffer up to the target, mixing all active voices.
+            while (
+                self._voices
+                and so.get_buffer_size() < self.MIX_TARGET_SECS
+                and guard < 25
+            ):
+                guard += 1
+                mixed = None
+                finished = []
+                for key, v in self._voices.items():
+                    chunk = v["pcm"][v["pos"]:v["pos"] + frame_bytes]
+                    if not chunk:
+                        finished.append(key)
+                        continue
+                    v["pos"] += len(chunk)
+                    if len(chunk) < frame_bytes:  # pad the final partial frame
+                        chunk = chunk + b"\x00" * (frame_bytes - len(chunk))
+                    mixed = chunk if mixed is None else audioop.add(mixed, chunk, 2)
+                for key in finished:
+                    del self._voices[key]
+                if mixed is None:
+                    break
+                so.add_sound(mixed)
+
+    def _submit_voice(self, key, pcm, append):
+        if not pcm:
+            return
+        with self._mix_lock:
+            v = self._voices.get(key)
+            if append and v is not None and v["pos"] < len(v["pcm"]):
+                # Concatenate after the not-yet-played remainder (compact the
+                # already-played head so the buffer doesn't grow unbounded).
+                v["pcm"] = v["pcm"][v["pos"]:] + pcm
+                v["pos"] = 0
+            else:
+                self._voices[key] = {"pcm": pcm, "pos": 0}
 
     def _get_pcm(self, ref, file, pitch_filter, volume, speed, shift):
         # Cache key includes the file mtime (so a trim/re-upload invalidates it)
@@ -139,6 +216,8 @@ class PlaybackManager(EventManager):
         self._play_sound(pcm)
 
     def _play_clips(self, event, pitch_filter):
+        key = event.voice_key or "default"
+        segment = b""
         for ref, speed, shift in zip(
             event.data, event.playback_speeds, event.semitone_shifts
         ):
@@ -151,25 +230,19 @@ class PlaybackManager(EventManager):
             pcm, cached = self._get_pcm(
                 ref, file, pitch_filter, volume, float(speed[:-1]), float(shift[:-1])
             )
-            t1 = time.monotonic()
-            self._play_sound(pcm)
-            t2 = time.monotonic()
-            # pymumble buffers PCM and paces it out itself; a large/growing
-            # buffer here would mean queued audio is backing up.
-            try:
-                buffered = len(self.mumble.sound_output.pcm)
-            except Exception:
-                buffered = -1
+            segment += pcm
             log.info(
-                "[timing] %s %s=%.0fms queue=%.1fms pcm=%dKiB buffered_pcm=%d cache=%dMiB",
+                "[timing] %s %s=%.0fms pcm=%dKiB cache=%dMiB voice=%s",
                 ref,
                 "cache" if cached else "ffmpeg",
-                (t1 - t0) * 1000,
-                (t2 - t1) * 1000,
+                (time.monotonic() - t0) * 1000,
                 len(pcm) // 1024,
-                buffered,
                 self._pcm_cache_bytes // (1024 * 1024),
+                key,
             )
+        # Replace this voice (interrupt/restart) for single web plays; append for
+        # queues / legacy events so they stay sequential.
+        self._submit_voice(key, segment, event.append)
 
     def _play_music(self, event):
         piece = "audio/music/{0}".format(event.piece)
@@ -336,10 +409,14 @@ class PlaybackManager(EventManager):
         self._play_sound(pcm)
 
     def _play_sound(self, pcm):
-        self.mumble.sound_output.add_sound(pcm)
+        # Vocode / music render straight to PCM; play them through the mixer on
+        # a shared system voice (appending so multi-part renders stay sequential).
+        self._submit_voice("__system__", pcm, append=True)
 
     def stop(self):
-        """Panic-stop: clear any audio still buffered for output."""
+        """Panic-stop: drop every active voice and flush the output buffer."""
+        with self._mix_lock:
+            self._voices.clear()
         try:
             self.mumble.sound_output.clear_buffer()
         except Exception:
@@ -502,7 +579,21 @@ class CommandManager(EventManager):
             msg = f"<b>{command['requested_by']}</b> played: {cmd_str}"
             self.text_message_manager.process(ChannelTextEvent(msg))
 
-        event = AudioEvent([command["clip_ref"]], [f"{speed}x"], [f"{pitch}s"])
+        if cmd_type == "queue_play":
+            # Queues stay sequential on a shared voice (can overlap live presses).
+            voice_key, append = "__queue__", True
+        else:
+            # Single plays key by requester: spamming interrupts your own clip,
+            # while different people overlap.
+            voice_key, append = (command.get("requested_by") or "web"), False
+
+        event = AudioEvent(
+            [command["clip_ref"]],
+            [f"{speed}x"],
+            [f"{pitch}s"],
+            voice_key=voice_key,
+            append=append,
+        )
         self.playback_manager.process(event)
 
 
