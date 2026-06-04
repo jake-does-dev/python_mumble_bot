@@ -59,9 +59,14 @@ export default function ClipsPage() {
   const [activeTag, setActiveTag] = useState(null)
   const [favouritesOnly, setFavouritesOnly] = useState(false)
   const [playingId, setPlayingId] = useState(null)
+  // Set when a history entry is clicked, to push that play's pitch/speed onto
+  // the matching clip card. `nonce` lets the same values re-apply on re-click.
+  const [historyPreset, setHistoryPreset] = useState(null)
   const [view, setView] = useState(() => localStorage.getItem('pmb_view') || 'grid')
   const [sort, setSort] = useState(() => localStorage.getItem('pmb_sort') || 'alpha')
   const [uploadOpen, setUploadOpen] = useState(false)
+  const [dragActive, setDragActive] = useState(false)  // file dragged over window
+  const [droppedFile, setDroppedFile] = useState(null)
   const [helpOpen, setHelpOpen] = useState(false)
   const [tagsExpanded, setTagsExpanded] = useState(() => localStorage.getItem('pmb_tags_expanded') !== 'false')
 
@@ -228,6 +233,40 @@ export default function ClipsPage() {
     return () => clearInterval(id)
   }, [])
 
+  // Drag a file anywhere over the window → overlay; drop → open upload pre-loaded.
+  // Only reacts to file drags (types includes "Files"), so dragging queue items
+  // around doesn't trigger it.
+  useEffect(() => {
+    let depth = 0
+    const hasFiles = (e) => {
+      const t = e.dataTransfer && e.dataTransfer.types
+      return !!t && Array.from(t).includes('Files')
+    }
+    const onEnter = (e) => { if (!hasFiles(e)) return; e.preventDefault(); depth += 1; setDragActive(true) }
+    const onOver = (e) => { if (hasFiles(e)) e.preventDefault() } // allow drop
+    const onLeave = (e) => { if (!hasFiles(e)) return; depth = Math.max(0, depth - 1); if (depth === 0) setDragActive(false) }
+    const onDrop = (e) => {
+      if (!hasFiles(e)) return
+      e.preventDefault()
+      depth = 0
+      setDragActive(false)
+      const f = e.dataTransfer.files && e.dataTransfer.files[0]
+      if (!f) return
+      setDroppedFile(f)
+      setUploadOpen(true)
+    }
+    window.addEventListener('dragenter', onEnter)
+    window.addEventListener('dragover', onOver)
+    window.addEventListener('dragleave', onLeave)
+    window.addEventListener('drop', onDrop)
+    return () => {
+      window.removeEventListener('dragenter', onEnter)
+      window.removeEventListener('dragover', onOver)
+      window.removeEventListener('dragleave', onLeave)
+      window.removeEventListener('drop', onDrop)
+    }
+  }, [])
+
   async function handleStop() {
     try {
       await api.post('/api/commands/stop')
@@ -347,7 +386,7 @@ export default function ClipsPage() {
       targetId = q.id
     }
     const target = current.find(q => q.id === targetId)
-    if (target && target.items.length >= 15) return
+    if (target && target.items.length >= 30) return
     saveQueues(current.map(q =>
       q.id === targetId
         ? { ...q, items: [...q.items, { id: newId(), identifier, name, pitch, speed }] }
@@ -374,6 +413,21 @@ export default function ClipsPage() {
     }))
   }
 
+  function handleReorderInQueue(queueId, fromIndex, toIndex) {
+    saveQueues(queues.map(q => {
+      if (q.id !== queueId) return q
+      const items = [...q.items]
+      if (
+        fromIndex === toIndex ||
+        fromIndex < 0 || toIndex < 0 ||
+        fromIndex >= items.length || toIndex >= items.length
+      ) return q
+      const [moved] = items.splice(fromIndex, 1)
+      items.splice(toIndex, 0, moved)
+      return { ...q, items }
+    }))
+  }
+
   function handleClearQueue(queueId) {
     saveQueues(queues.map(q => q.id === queueId ? { ...q, items: [] } : q))
   }
@@ -393,12 +447,12 @@ export default function ClipsPage() {
           speed: item.speed,
         })),
       })
-      setQueueCooldownUntil(Date.now() + 30000)
+      setQueueCooldownUntil(Date.now() + 10000)
       setTimeout(fetchHistory, 1500)
     } catch (err) {
       if (err.response?.status === 429) {
         const m = /(\d+)/.exec(err.response.data?.detail || '')
-        const secs = m ? Number(m[1]) : 30
+        const secs = m ? Number(m[1]) : 10
         setQueueCooldownUntil(Date.now() + secs * 1000)
       } else if (err.response?.status === 403) {
         showActionToast(err.response.data?.detail || 'Not allowed to play right now')
@@ -415,6 +469,15 @@ export default function ClipsPage() {
 
   return (
     <div className={styles.page}>
+      {dragActive && (
+        <div className={styles.dropOverlay}>
+          <div className={styles.dropInner}>
+            <div className={styles.dropIcon}>⬆</div>
+            <div className={styles.dropTitle}>Drop a clip to upload</div>
+            <div className={styles.dropHint}>.wav or .mp3</div>
+          </div>
+        </div>
+      )}
       <header className={styles.header}>
         <span className={styles.title}>Python Mumble Bot</span>
         <div className={styles.headerActions}>
@@ -479,8 +542,9 @@ export default function ClipsPage() {
           <div className={styles.controls}>
             {uploadOpen && (
               <UploadPanel
-                onClose={() => setUploadOpen(false)}
+                onClose={() => { setUploadOpen(false); setDroppedFile(null) }}
                 onUploaded={handleUploaded}
+                initialFile={droppedFile}
               />
             )}
             {voiceControl && <VoicePanel />}
@@ -579,6 +643,7 @@ export default function ClipsPage() {
                       playing={playingId === clip.identifier}
                       isAdmin={isAdmin}
                       view={view}
+                      preset={historyPreset && historyPreset.ref === clip.identifier ? historyPreset : null}
                     />
                   ))}
                 </div>
@@ -615,6 +680,7 @@ export default function ClipsPage() {
               onRenameQueue={handleRenameQueue}
               onRemoveItem={handleRemoveFromQueue}
               onMoveItem={handleMoveInQueue}
+              onReorderItem={handleReorderInQueue}
               onPlayQueue={handlePlayQueue}
               onClearQueue={handleClearQueue}
               playingQueue={playingQueue}
@@ -638,7 +704,7 @@ export default function ClipsPage() {
                       acc.push(
                         <li key={i} className={styles.historyItem}>
                           <span className={styles.historyNameRow}>
-                            <span className={styles.historyName} onClick={() => { setSearch(entry.clip_name); setActiveTag(null); setFavouritesOnly(false) }} title="Search for this clip">{entry.clip_name}</span>
+                            <span className={styles.historyName} onClick={() => { setSearch(entry.clip_name); setActiveTag(null); setFavouritesOnly(false); setHistoryPreset({ ref: entry.clip_ref, pitch: entry.pitch ?? 0, speed: entry.speed ?? 1, nonce: Date.now() }) }} title="Search for this clip (and match its pitch/speed)">{entry.clip_name}</span>
                             {entry.count > 1 && <span className={styles.historyCount}>×{entry.count}</span>}
                           </span>
                           <span className={styles.historyMeta}>

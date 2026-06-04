@@ -9,13 +9,15 @@ function pitchLabel(v) {
 export default function QueuePanel({
   queues, activeQueueId, onSelectQueue,
   onCreateQueue, onDeleteQueue, onRenameQueue,
-  onRemoveItem, onMoveItem, onPlayQueue, onClearQueue,
+  onRemoveItem, onMoveItem, onReorderItem, onPlayQueue, onClearQueue,
   playingQueue, cooldownRemaining = 0,
 }) {
   const [creating, setCreating] = useState(false)
   const [createName, setCreateName] = useState('')
   const [renamingId, setRenamingId] = useState(null)
   const [renameName, setRenameName] = useState('')
+  const [dragIndex, setDragIndex] = useState(null)
+  const [overIndex, setOverIndex] = useState(null)
 
   const active = queues.find(q => q.id === activeQueueId)
 
@@ -102,7 +104,20 @@ export default function QueuePanel({
           : (
             <ol className={styles.list}>
               {active.items.map((item, idx) => (
-                <li key={item.id} className={styles.item}>
+                <li
+                  key={item.id}
+                  className={`${styles.item} ${dragIndex === idx ? styles.dragging : ''} ${overIndex === idx && dragIndex !== null && dragIndex !== idx ? styles.dragOver : ''}`}
+                  draggable
+                  onDragStart={() => setDragIndex(idx)}
+                  onDragOver={e => { e.preventDefault(); if (overIndex !== idx) setOverIndex(idx) }}
+                  onDrop={e => {
+                    e.preventDefault()
+                    if (dragIndex !== null && dragIndex !== idx) onReorderItem(activeQueueId, dragIndex, idx)
+                    setDragIndex(null); setOverIndex(null)
+                  }}
+                  onDragEnd={() => { setDragIndex(null); setOverIndex(null) }}
+                >
+                  <span className={styles.dragHandle} title="Drag to reorder">⠿</span>
                   <div className={styles.itemMain}>
                     <span className={styles.itemName}>{item.name}</span>
                     <span className={styles.itemMeta}>{pitchLabel(item.pitch)} · {item.speed.toFixed(2)}×</span>

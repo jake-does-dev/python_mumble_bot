@@ -18,7 +18,7 @@ function formatDate(iso) {
   return new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
 }
 
-export default function ClipCard({ clip, onToggleFavourite, onPlay, onDelete, onAddToQueue, onEdit, onVote, onTrimmed, onGain, username = null, playing, isAdmin = false, view = 'grid' }) {
+export default function ClipCard({ clip, onToggleFavourite, onPlay, onDelete, onAddToQueue, onEdit, onVote, onTrimmed, onGain, username = null, playing, isAdmin = false, view = 'grid', preset = null }) {
   const [pitch, setPitch] = useState(() => loadSetting(clip.identifier, 'pitch', 0))
   const [speed, setSpeed] = useState(() => loadSetting(clip.identifier, 'speed', 1))
   const [confirmDelete, setConfirmDelete] = useState(false)
@@ -34,8 +34,19 @@ export default function ClipCard({ clip, onToggleFavourite, onPlay, onDelete, on
   const nameInnerRef = useRef(null)
   const audioRef = useRef(null)
   const urlRef = useRef(null)
+  const urlKeyRef = useRef(null)  // pitch|speed the cached preview was rendered at
 
   const canEdit = isAdmin || (clip.uploaded_by && clip.uploaded_by === username)
+
+  // Clicking a history entry pushes that play's pitch/speed onto this card.
+  useEffect(() => {
+    if (!preset) return
+    setPitch(preset.pitch)
+    saveSetting(clip.identifier, 'pitch', preset.pitch)
+    setSpeed(preset.speed)
+    saveSetting(clip.identifier, 'speed', preset.speed)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [preset?.nonce])
 
   useEffect(() => {
     return () => {
@@ -73,9 +84,21 @@ export default function ClipCard({ clip, onToggleFavourite, onPlay, onDelete, on
       return
     }
     try {
+      // The preview is rendered server-side at the current pitch/speed (exactly
+      // how the bot plays it), so drop the cached audio if those have changed.
+      const key = `${pitch}|${speed}`
+      if (urlRef.current && urlKeyRef.current !== key) {
+        if (audioRef.current) { audioRef.current.pause(); audioRef.current = null }
+        URL.revokeObjectURL(urlRef.current)
+        urlRef.current = null
+      }
       if (!urlRef.current) {
-        const res = await api.get(`/api/clips/${clip.identifier}/audio`, { responseType: 'blob' })
+        const res = await api.get(`/api/clips/${clip.identifier}/audio`, {
+          params: { pitch, speed },
+          responseType: 'blob',
+        })
         urlRef.current = URL.createObjectURL(res.data)
+        urlKeyRef.current = key
       }
       if (!audioRef.current) {
         audioRef.current = new Audio(urlRef.current)
@@ -200,7 +223,12 @@ export default function ClipCard({ clip, onToggleFavourite, onPlay, onDelete, on
                 {previewing ? '⏸ ' : ''}{clip.name}
               </span>
             </span>
-            <span className={styles.identifier}>{clip.identifier}</span>
+            <span
+              className={styles.identifier}
+              title={clip.uploaded_by ? `id: ${clip.identifier}` : undefined}
+            >
+              {clip.uploaded_by ? `↑ ${clip.uploaded_by}` : clip.identifier}
+            </span>
           </div>
           <div className={styles.tags}>
             {clip.tags.map(tag => (
