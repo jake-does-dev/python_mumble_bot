@@ -1,10 +1,12 @@
 import base64
 import datetime as dt
 import json
+import logging
 import os
 import subprocess as sp
 import time
 import wave
+from collections import OrderedDict
 from pathlib import Path
 
 import requests
@@ -33,6 +35,8 @@ MUSIC_XML_DIR = Path("audio/music")
 VOCODE_API_URL = "https://mumble.stream/speak_spectrogram"
 VOCODE_API_HEADERS = {"Content-Type": "application/json"}
 
+log = logging.getLogger("pmb.mumble")
+
 
 class EventManager:
     def process(self, event):
@@ -55,9 +59,41 @@ class PlaybackManager(EventManager):
     RESAMPLE_FILTER = transform.RESAMPLE_FILTER
     SETRATE_FILTER = transform.SETRATE_FILTER
 
+    # Spawning ffmpeg per play costs ~85ms (225ms cold), so cache the decoded
+    # PCM. Bounded by total bytes (~10s clip = ~1MB of 48kHz mono PCM).
+    PCM_CACHE_MAX_BYTES = 64 * 1024 * 1024
+
     def __init__(self, mumble, state_manager):
         self.mumble = mumble
         self.state_manager = state_manager
+        self._pcm_cache = OrderedDict()
+        self._pcm_cache_bytes = 0
+
+    def _get_pcm(self, ref, file, pitch_filter, volume, speed, shift):
+        # Cache key includes the file mtime (so a trim/re-upload invalidates it)
+        # and every transform param (so pitch/speed/volume changes are distinct).
+        try:
+            mtime = os.path.getmtime(file)
+        except OSError:
+            mtime = 0
+        key = (
+            str(file), round(mtime, 3), pitch_filter,
+            round(volume, 3), round(speed, 4), round(shift, 4),
+        )
+        pcm = self._pcm_cache.get(key)
+        if pcm is not None:
+            self._pcm_cache.move_to_end(key)  # mark most-recently-used
+            return pcm, True
+
+        pcm = transform.transform_audio(
+            file, pitch_filter, volume, speed, shift, desired_output="pcm"
+        )
+        self._pcm_cache[key] = pcm
+        self._pcm_cache_bytes += len(pcm)
+        while self._pcm_cache_bytes > self.PCM_CACHE_MAX_BYTES and len(self._pcm_cache) > 1:
+            _, evicted = self._pcm_cache.popitem(last=False)  # evict oldest
+            self._pcm_cache_bytes -= len(evicted)
+        return pcm, False
 
     def accept(self, event):
         return (
@@ -103,7 +139,6 @@ class PlaybackManager(EventManager):
         self._play_sound(pcm)
 
     def _play_clips(self, event, pitch_filter):
-        print("in play clips")
         for ref, speed, shift in zip(
             event.data, event.playback_speeds, event.semitone_shifts
         ):
@@ -111,17 +146,30 @@ class PlaybackManager(EventManager):
             gain = transform.gain_db_to_multiplier(
                 self.state_manager.get_clip_gain_db(ref)
             )
-            pcm = transform.transform_audio(
-                file,
-                pitch_filter,
-                self.state_manager.get_volume() * gain,
-                float(speed[:-1]),
-                float(shift[:-1]),
-                desired_output="pcm",
+            volume = self.state_manager.get_volume() * gain
+            t0 = time.monotonic()
+            pcm, cached = self._get_pcm(
+                ref, file, pitch_filter, volume, float(speed[:-1]), float(shift[:-1])
             )
-
-            # self.mumble.sound_output.set_audio_per_packet(0.001)
+            t1 = time.monotonic()
             self._play_sound(pcm)
+            t2 = time.monotonic()
+            # pymumble buffers PCM and paces it out itself; a large/growing
+            # buffer here would mean queued audio is backing up.
+            try:
+                buffered = len(self.mumble.sound_output.pcm)
+            except Exception:
+                buffered = -1
+            log.info(
+                "[timing] %s %s=%.0fms queue=%.1fms pcm=%dKiB buffered_pcm=%d cache=%dMiB",
+                ref,
+                "cache" if cached else "ffmpeg",
+                (t1 - t0) * 1000,
+                (t2 - t1) * 1000,
+                len(pcm) // 1024,
+                buffered,
+                self._pcm_cache_bytes // (1024 * 1024),
+            )
 
     def _play_music(self, event):
         piece = "audio/music/{0}".format(event.piece)
@@ -393,7 +441,7 @@ class RecordingManager(EventManager):
 
 
 class CommandManager(EventManager):
-    POLL_INTERVAL = 0.1
+    POLL_INTERVAL = 0.02
 
     def __init__(self, mongo_interface, playback_manager, text_message_manager):
         self.mongo_interface = mongo_interface
@@ -413,6 +461,18 @@ class CommandManager(EventManager):
 
         self.mongo_interface.mark_command_done(command["_id"])
         cmd_type = command.get("type", "play")
+
+        # How long the command sat between the web enqueuing it and the bot
+        # picking it up (bounded below by the 0.1s poll interval).
+        created = command.get("created_at")
+        if isinstance(created, dt.datetime):
+            waited = (dt.datetime.utcnow() - created).total_seconds() * 1000
+            log.info(
+                "[timing] picked up %s %s after %.0fms in queue",
+                cmd_type,
+                command.get("clip_ref", ""),
+                waited,
+            )
 
         if cmd_type == "announce":
             self.text_message_manager.process(ChannelTextEvent(command["message"]))
