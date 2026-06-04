@@ -12,10 +12,23 @@ class Event:
 
 
 class AudioEvent(Event):
-    def __init__(self, data, playback_speeds, semitone_shifts=None):
+    def __init__(
+        self,
+        data,
+        playback_speeds,
+        semitone_shifts=None,
+        voice_key=None,
+        append=True,
+    ):
         super().__init__(data)
         self.playback_speeds = playback_speeds
         self.semitone_shifts = semitone_shifts
+        # Mixer routing: which "voice" this plays on, and whether it appends to
+        # that voice (sequential) or replaces it (interrupt/restart). Web single
+        # plays key by requester + replace; queues use a shared appending voice;
+        # legacy in-channel events default to a shared appending "default" voice.
+        self.voice_key = voice_key
+        self.append = append
 
 
 class VocodeEvent(Event):
