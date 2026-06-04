@@ -27,6 +27,7 @@ export default function HelpModal({ onClose, isAdmin = false, voiceControl = fal
             Hit <b>▶</b> on any clip card to play it in the channel. Use the <b>Pitch</b> and
             <b> Speed</b> sliders first to change how it sounds — your settings are remembered
             per clip. Multiple people can fire clips at once; they overlap like a real soundboard.
+            Click the clip name to <b>preview it in your browser</b>, or <b>⬇</b> to download the file.
             {presenceRequired && (
               <p className={styles.note}>
                 ⚠ You must be <b>in the voice channel</b> and linked to your account by an admin
@@ -81,9 +82,10 @@ export default function HelpModal({ onClose, isAdmin = false, voiceControl = fal
           </Section>
 
           <Section icon="↑" title="Uploading">
-            Use <b>↑ Upload</b> to add a clip (.wav / .mp3, up to 10s). You can <b>preview the audio
-            before uploading</b>. Uploads are loudness-normalised so nothing is wildly louder than
-            the rest.
+            Use <b>↑ Upload</b> to add a clip (.wav / .mp3). You can drop in a file up to <b>60s</b>
+            and <b>drag the handles on the waveform to trim it down</b> to the ≤10s you want to keep —
+            only the selection is uploaded. Preview the whole file or just your selection before you
+            commit. Uploads are loudness-normalised so nothing is wildly louder than the rest.
           </Section>
 
           <Section icon="✎" title="Editing your clips">

@@ -97,6 +97,16 @@
   height: 36px;
 }
 
+.trimmer {
+  margin-top: 0.25rem;
+}
+
+.trimHint {
+  font-size: 0.78rem;
+  color: var(--text);
+  margin: 0 0 0.6rem;
+}
+
 .actions {
   display: flex;
   gap: 0.5rem;

@@ -71,6 +71,8 @@ async def upload_clip(
     file: UploadFile = File(...),
     name: str = Form(default=""),
     tags: str = Form(default=""),
+    start: Optional[float] = Form(default=None),
+    end: Optional[float] = Form(default=None),
     current_user: str = Depends(get_current_user),
 ):
     ext = Path(file.filename).suffix.lower()
@@ -82,7 +84,8 @@ async def upload_clip(
     tag_list = [t.strip() for t in tags.split(",") if t.strip()]
 
     return ClipsService().upload_clip(
-        clip_name, ext, contents, tag_list, uploaded_by=current_user
+        clip_name, ext, contents, tag_list,
+        uploaded_by=current_user, start=start, end=end,
     )
 
 

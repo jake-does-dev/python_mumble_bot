@@ -428,6 +428,42 @@ export default function ClipsPage() {
           <button className={styles.statsLink} onClick={() => setHelpOpen(true)} title="How to use the bot">❓ Help</button>
           <Link to="/stats" className={styles.statsLink}>📊 Stats</Link>
           {isAdmin && <Link to="/admin/users" className={styles.statsLink}>⚙ Users</Link>}
+
+          <span className={styles.headerDivider} />
+
+          <button
+            className={`${styles.statsLink} ${uploadOpen ? styles.active : ''}`}
+            onClick={() => setUploadOpen(o => !o)}
+            title="Upload a clip"
+          >
+            ↑ Upload
+          </button>
+          {isAdmin && (
+            <button
+              className={styles.stopBtn}
+              onClick={handleStop}
+              title="Stop all playback now (admin)"
+            >
+              ⏹ Stop
+            </button>
+          )}
+          {confirmRestart ? (
+            <span className={styles.restartConfirm}>
+              <button className={styles.restartBtn} onClick={handleRestart} title="Confirm restart">♻ Confirm?</button>
+              <button className={styles.restartCancel} onClick={() => setConfirmRestart(false)} title="Cancel">✕</button>
+            </span>
+          ) : (
+            <button
+              className={styles.restartBtn}
+              onClick={() => setConfirmRestart(true)}
+              title="Restart the bot if it's laggy or stuck — it'll rejoin your channel"
+            >
+              ♻ Restart
+            </button>
+          )}
+
+          <span className={styles.headerDivider} />
+
           <button className={styles.logout} onClick={handleLogout}>Sign out</button>
         </div>
       </header>
@@ -441,6 +477,13 @@ export default function ClipsPage() {
       <div className={styles.layout}>
         <div className={styles.main}>
           <div className={styles.controls}>
+            {uploadOpen && (
+              <UploadPanel
+                onClose={() => setUploadOpen(false)}
+                onUploaded={handleUploaded}
+              />
+            )}
+            {voiceControl && <VoicePanel />}
             <div className={styles.controlsTop}>
               <div className={styles.searchWrap}>
                 <input
@@ -455,56 +498,25 @@ export default function ClipsPage() {
                   <button className={styles.searchClear} onClick={() => setSearch('')} title="Clear search">✕</button>
                 )}
               </div>
-              <div className={styles.viewToggle}>
-                <button className={`${styles.viewBtn} ${sort === 'alpha'   ? styles.active : ''}`} onClick={() => handleSetSort('alpha')}  title="Sort A→Z">A→Z</button>
-                <button className={`${styles.viewBtn} ${sort === 'newest'  ? styles.active : ''}`} onClick={() => handleSetSort('newest')} title="Sort newest first">Date ↓</button>
-                <button className={`${styles.viewBtn} ${sort === 'oldest'  ? styles.active : ''}`} onClick={() => handleSetSort('oldest')} title="Sort oldest first">Date ↑</button>
-                <button className={`${styles.viewBtn} ${sort === 'top'     ? styles.active : ''}`} onClick={() => handleSetSort('top')}    title="Best rated first">★ Top</button>
-                <button className={`${styles.viewBtn} ${sort === 'rot'     ? styles.active : ''}`} onClick={() => handleSetSort('rot')}    title="Worst rated first">🥀 Rot</button>
-              </div>
-              <div className={styles.viewToggle}>
-                <button className={`${styles.viewBtn} ${view === 'grid' ? styles.active : ''}`} onClick={() => handleSetView('grid')} title="Grid view">⊞</button>
-                <button className={`${styles.viewBtn} ${view === 'list' ? styles.active : ''}`} onClick={() => handleSetView('list')} title="List view">☰</button>
-                <button className={`${styles.viewBtn} ${view === 'pads' ? styles.active : ''}`} onClick={() => handleSetView('pads')} title="Pad board (favourites + hotkeys)">▦</button>
-              </div>
-              <button
-                className={`${styles.viewBtn} ${uploadOpen ? styles.active : ''}`}
-                onClick={() => setUploadOpen(o => !o)}
-                title="Upload a clip"
+              <select
+                className={styles.sortSelect}
+                value={sort}
+                onChange={e => handleSetSort(e.target.value)}
+                title="Sort order"
+                aria-label="Sort order"
               >
-                ↑ Upload
-              </button>
-              {isAdmin && (
-                <button
-                  className={styles.stopBtn}
-                  onClick={handleStop}
-                  title="Stop all playback now (admin)"
-                >
-                  ⏹ Stop
-                </button>
-              )}
-              {confirmRestart ? (
-                <span className={styles.restartConfirm}>
-                  <button className={styles.restartBtn} onClick={handleRestart} title="Confirm restart">♻ Confirm?</button>
-                  <button className={styles.restartCancel} onClick={() => setConfirmRestart(false)} title="Cancel">✕</button>
-                </span>
-              ) : (
-                <button
-                  className={styles.restartBtn}
-                  onClick={() => setConfirmRestart(true)}
-                  title="Restart the bot if it's laggy or stuck — it'll rejoin your channel"
-                >
-                  ♻ Restart bot
-                </button>
-              )}
+                <option value="alpha">A→Z</option>
+                <option value="newest">Date ↓</option>
+                <option value="oldest">Date ↑</option>
+                <option value="top">★ Top</option>
+                <option value="rot">🥀 Rot</option>
+              </select>
+              <div className={styles.viewToggle}>
+                <button className={`${styles.viewBtn} ${view === 'grid' ? styles.active : ''}`} onClick={() => handleSetView('grid')} title="Grid view">⊞ Grid</button>
+                <button className={`${styles.viewBtn} ${view === 'list' ? styles.active : ''}`} onClick={() => handleSetView('list')} title="List view">☰ List</button>
+                <button className={`${styles.viewBtn} ${view === 'pads' ? styles.active : ''}`} onClick={() => handleSetView('pads')} title="Pad board (favourites + hotkeys)">▦ Pads</button>
+              </div>
             </div>
-            {uploadOpen && (
-              <UploadPanel
-                onClose={() => setUploadOpen(false)}
-                onUploaded={handleUploaded}
-              />
-            )}
-            {voiceControl && <VoicePanel />}
             <div className={styles.filters}>
               <button
                 className={`${styles.filterBtn} ${!activeTag && !favouritesOnly ? styles.active : ''}`}

@@ -1,0 +1,106 @@
+/* Waveform track + region selection (shared by TrimModal and UploadPanel) */
+.track {
+  position: relative;
+  height: 120px;
+  background: var(--code-bg);
+  border-radius: 8px;
+  overflow: hidden;
+  touch-action: none;
+  user-select: none;
+}
+
+.canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.mask {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  background: var(--bg);
+  opacity: 0.6;
+}
+
+.region {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  border-left: 2px solid var(--accent);
+  border-right: 2px solid var(--accent);
+  background: var(--accent-bg);
+  pointer-events: none;
+}
+
+.handle {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 14px;
+  margin-left: -7px;
+  cursor: ew-resize;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.handle::after {
+  content: '';
+  width: 4px;
+  height: 40px;
+  border-radius: 999px;
+  background: var(--accent);
+  box-shadow: 0 0 0 2px var(--bg);
+}
+
+.playhead {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  margin-left: -1px;
+  background: var(--text-h);
+  box-shadow: 0 0 4px rgba(0, 0, 0, 0.45);
+  pointer-events: none;
+}
+
+.times {
+  display: flex;
+  justify-content: space-between;
+  margin: 0.9rem 0 1.1rem;
+  font-size: 0.8rem;
+  color: var(--text);
+}
+
+.times strong {
+  color: var(--text-h);
+  font-weight: 600;
+  margin-left: 0.2rem;
+}
+
+.tooLong {
+  color: #ef4444;
+  font-weight: 600;
+}
+
+.tooLong strong {
+  color: #ef4444;
+}
+
+.preview {
+  padding: 6px 14px;
+  border-radius: 6px;
+  font-size: 0.85rem;
+  cursor: pointer;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-h);
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+
+.preview:hover {
+  border-color: var(--accent-border);
+  color: var(--accent);
+}
