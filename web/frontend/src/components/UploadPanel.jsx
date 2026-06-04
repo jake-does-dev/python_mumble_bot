@@ -1,10 +1,12 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import api from '../api'
+import WaveformTrimmer from './WaveformTrimmer'
 import styles from './UploadPanel.module.css'
 
 const NAME_RE = /^[a-zA-Z0-9_\-]+$/
 const MAX_SIZE_MB = 50
-const MAX_DURATION_SECS = 10
+const MAX_DURATION_SECS = 10        // the stored (trimmed) clip
+const MAX_SOURCE_SECS = 60          // the source you can upload to trim down
 
 export default function UploadPanel({ onClose, onUploaded }) {
   const [file, setFile] = useState(null)
@@ -14,20 +16,59 @@ export default function UploadPanel({ onClose, onUploaded }) {
   const [error, setError] = useState(null)
   const [previewUrl, setPreviewUrl] = useState(null)
 
+  const [buffer, setBuffer] = useState(null)
+  const [duration, setDuration] = useState(0)
+  const [start, setStart] = useState(0)
+  const [end, setEnd] = useState(0)
+
+  const onChange = useCallback((s, e) => { setStart(s); setEnd(e) }, [])
+
   useEffect(() => {
     return () => { if (previewUrl) URL.revokeObjectURL(previewUrl) }
   }, [previewUrl])
 
-  function handleFileChange(e) {
+  function resetWaveform() {
+    setBuffer(null)
+    setDuration(0)
+    setStart(0)
+    setEnd(0)
+  }
+
+  async function handleFileChange(e) {
     const f = e.target.files[0]
     if (!f) return
     setFile(f)
     setError(null)
+    resetWaveform()
     const stem = f.name.replace(/\.[^.]+$/, '')
     setName(stem)
     if (previewUrl) URL.revokeObjectURL(previewUrl)
     setPreviewUrl(URL.createObjectURL(f))
+
+    // Decode for the waveform. If it fails (some codecs), we silently fall back
+    // to a plain upload — the server still enforces the 10s limit.
+    try {
+      const bytes = await f.arrayBuffer()
+      const AC = window.AudioContext || window.webkitAudioContext
+      const actx = new AC()
+      const buf = await actx.decodeAudioData(bytes)
+      actx.close()
+      if (buf.duration > MAX_SOURCE_SECS) {
+        setError(`Audio too long — max ${MAX_SOURCE_SECS}s. Pick a shorter file.`)
+        return
+      }
+      setBuffer(buf)
+      setDuration(buf.duration)
+      setStart(0)
+      setEnd(Math.min(buf.duration, MAX_DURATION_SECS))
+    } catch {
+      // No waveform; upload as-is (server validates duration).
+    }
   }
+
+  const selLen = end - start
+  const selectionTooLong = !!buffer && selLen > MAX_DURATION_SECS + 0.05
+  const trimming = !!buffer && (start > 0.05 || end < duration - 0.05)
 
   async function handleSubmit(e) {
     e.preventDefault()
@@ -53,10 +94,19 @@ export default function UploadPanel({ onClose, onUploaded }) {
       return
     }
 
+    if (selectionTooLong) {
+      setError(`Trim your selection to ${MAX_DURATION_SECS}s or less`)
+      return
+    }
+
     const formData = new FormData()
     formData.append('file', file)
     formData.append('name', trimmed)
     formData.append('tags', tags)
+    if (buffer) {
+      formData.append('start', start.toFixed(3))
+      formData.append('end', end.toFixed(3))
+    }
 
     setUploading(true)
     try {
@@ -98,7 +148,7 @@ export default function UploadPanel({ onClose, onUploaded }) {
         </div>
         <div className={styles.field}>
           <label className={styles.label}>
-            File <span className={styles.hint}>(.wav or .mp3, max {MAX_SIZE_MB} MB / {MAX_DURATION_SECS}s)</span>
+            File <span className={styles.hint}>(.wav or .mp3, up to {MAX_SOURCE_SECS}s / {MAX_SIZE_MB} MB — trim to {MAX_DURATION_SECS}s)</span>
           </label>
           <label className={`${styles.fileBtn} ${uploading ? styles.disabled : ''}`}>
             {file ? file.name : 'Choose file…'}
@@ -106,18 +156,36 @@ export default function UploadPanel({ onClose, onUploaded }) {
           </label>
         </div>
       </div>
+
       {previewUrl && (
         <audio className={styles.preview} controls src={previewUrl}>
           Your browser does not support audio preview.
         </audio>
       )}
+
+      {buffer && (
+        <div className={styles.trimmer}>
+          <p className={styles.trimHint}>
+            Drag the handles to pick the {MAX_DURATION_SECS}s you want to keep. Only the selection is uploaded.
+          </p>
+          <WaveformTrimmer
+            audioBuffer={buffer}
+            duration={duration}
+            start={start}
+            end={end}
+            onChange={onChange}
+            maxSelection={MAX_DURATION_SECS}
+          />
+        </div>
+      )}
+
       {error && <p className={styles.error}>{error}</p>}
       <div className={styles.actions}>
         <button type="button" className={styles.cancel} onClick={onClose} disabled={uploading}>
           Cancel
         </button>
-        <button type="submit" className={styles.upload} disabled={uploading || !file}>
-          {uploading ? 'Uploading…' : 'Upload'}
+        <button type="submit" className={styles.upload} disabled={uploading || !file || selectionTooLong}>
+          {uploading ? 'Uploading…' : (trimming ? 'Trim & upload' : 'Upload')}
         </button>
       </div>
     </form>

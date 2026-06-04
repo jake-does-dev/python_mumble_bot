@@ -172,6 +172,7 @@
 .star,
 .reset,
 .play,
+.download,
 .edit {
   border: 1px solid var(--border);
   border-radius: 6px;
@@ -181,6 +182,17 @@
   padding: 4px 10px;
   font-size: 1rem;
   transition: background 0.15s, border-color 0.15s;
+}
+
+.download:hover:not(:disabled) {
+  background: var(--accent-bg);
+  border-color: var(--accent-border);
+  color: var(--accent);
+}
+
+.download:disabled {
+  opacity: 0.5;
+  cursor: default;
 }
 
 .edit:hover {

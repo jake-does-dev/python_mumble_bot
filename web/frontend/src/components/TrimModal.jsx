@@ -1,11 +1,7 @@
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import api from '../api'
+import WaveformTrimmer from './WaveformTrimmer'
 import styles from './TrimModal.module.css'
-
-function fmt(t) {
-  if (!isFinite(t)) return '0.00s'
-  return `${t.toFixed(2)}s`
-}
 
 export default function TrimModal({ clip, onClose, onTrimmed }) {
   const [loading, setLoading] = useState(true)
@@ -14,50 +10,10 @@ export default function TrimModal({ clip, onClose, onTrimmed }) {
   const [start, setStart] = useState(0)
   const [end, setEnd] = useState(0)
   const [busy, setBusy] = useState(false)
-  const [playing, setPlaying] = useState(false)
-
-  const canvasRef = useRef(null)
-  const trackRef = useRef(null)
-  const audioRef = useRef(null)
-  const urlRef = useRef(null)
-  const bufferRef = useRef(null)
-  const dragRef = useRef(null)
-  const stateRef = useRef({ start: 0, end: 0, duration: 0 })
+  const [buffer, setBuffer] = useState(null)
 
   const canRevert = !!clip.original_file
-
-  stateRef.current = { start, end, duration }
-
-  const drawWaveform = useCallback((buf) => {
-    const canvas = canvasRef.current
-    if (!canvas) return
-    const dpr = window.devicePixelRatio || 1
-    const cssW = canvas.clientWidth || 520
-    const cssH = canvas.clientHeight || 120
-    canvas.width = cssW * dpr
-    canvas.height = cssH * dpr
-    const ctx = canvas.getContext('2d')
-    ctx.scale(dpr, dpr)
-    ctx.clearRect(0, 0, cssW, cssH)
-
-    const data = buf.getChannelData(0)
-    const buckets = Math.min(cssW, 600)
-    const step = Math.floor(data.length / buckets) || 1
-    const mid = cssH / 2
-    const accent = getComputedStyle(canvas).getPropertyValue('--accent').trim() || '#aa3bff'
-    ctx.fillStyle = accent
-    const barW = cssW / buckets
-    for (let i = 0; i < buckets; i++) {
-      let peak = 0
-      const base = i * step
-      for (let j = 0; j < step; j++) {
-        const v = Math.abs(data[base + j] || 0)
-        if (v > peak) peak = v
-      }
-      const h = Math.max(1, peak * (cssH * 0.92))
-      ctx.fillRect(i * barW, mid - h / 2, Math.max(1, barW - 0.5), h)
-    }
-  }, [])
+  const onChange = useCallback((s, e) => { setStart(s); setEnd(e) }, [])
 
   useEffect(() => {
     let cancelled = false
@@ -67,19 +23,15 @@ export default function TrimModal({ clip, onClose, onTrimmed }) {
       params: { t: Date.now() }, // bust any cached (pre-trim) audio
     })
       .then(async (res) => {
-        const blob = new Blob([res.data])
-        urlRef.current = URL.createObjectURL(blob)
-        audioRef.current = new Audio(urlRef.current)
         const AC = window.AudioContext || window.webkitAudioContext
         const actx = new AC()
         const buf = await actx.decodeAudioData(res.data.slice(0))
         actx.close()
         if (cancelled) return
-        bufferRef.current = buf
+        setBuffer(buf)
         setDuration(buf.duration)
         setStart(0)
         setEnd(buf.duration)
-        requestAnimationFrame(() => drawWaveform(buf))
         setLoading(false)
       })
       .catch(() => {
@@ -90,56 +42,8 @@ export default function TrimModal({ clip, onClose, onTrimmed }) {
       })
     return () => {
       cancelled = true
-      if (audioRef.current) audioRef.current.pause()
-      if (urlRef.current) URL.revokeObjectURL(urlRef.current)
     }
-  }, [clip.identifier, drawWaveform])
-
-  // Drag handles.
-  useEffect(() => {
-    function onMove(e) {
-      const which = dragRef.current
-      if (!which) return
-      const track = trackRef.current
-      if (!track) return
-      const rect = track.getBoundingClientRect()
-      const x = Math.min(Math.max(e.clientX - rect.left, 0), rect.width)
-      const t = (x / rect.width) * stateRef.current.duration
-      if (which === 'start') {
-        setStart(Math.min(t, stateRef.current.end - 0.1))
-      } else {
-        setEnd(Math.max(t, stateRef.current.start + 0.1))
-      }
-    }
-    function onUp() { dragRef.current = null }
-    window.addEventListener('pointermove', onMove)
-    window.addEventListener('pointerup', onUp)
-    return () => {
-      window.removeEventListener('pointermove', onMove)
-      window.removeEventListener('pointerup', onUp)
-    }
-  }, [])
-
-  function playSelection() {
-    const audio = audioRef.current
-    if (!audio) return
-    if (playing) {
-      audio.pause()
-      setPlaying(false)
-      return
-    }
-    audio.currentTime = start
-    const onTime = () => {
-      if (audio.currentTime >= end) {
-        audio.pause()
-        audio.removeEventListener('timeupdate', onTime)
-        setPlaying(false)
-      }
-    }
-    audio.addEventListener('timeupdate', onTime)
-    audio.play()
-    setPlaying(true)
-  }
+  }, [clip.identifier])
 
   async function doTrim() {
     setBusy(true)
@@ -165,8 +69,6 @@ export default function TrimModal({ clip, onClose, onTrimmed }) {
     }
   }
 
-  const startPct = duration ? (start / duration) * 100 : 0
-  const endPct = duration ? (end / duration) * 100 : 100
   const trimsWholeClip = start <= 0.001 && end >= duration - 0.001
 
   return (
@@ -185,48 +87,28 @@ export default function TrimModal({ clip, onClose, onTrimmed }) {
 
         {!loading && !error && (
           <>
-            <div className={styles.track} ref={trackRef}>
-              <canvas className={styles.canvas} ref={canvasRef} />
-              <div className={styles.mask} style={{ left: 0, width: `${startPct}%` }} />
-              <div className={styles.mask} style={{ left: `${endPct}%`, right: 0 }} />
-              <div className={styles.region} style={{ left: `${startPct}%`, width: `${endPct - startPct}%` }} />
-              <div
-                className={styles.handle}
-                style={{ left: `${startPct}%` }}
-                onPointerDown={() => { dragRef.current = 'start' }}
-              />
-              <div
-                className={styles.handle}
-                style={{ left: `${endPct}%` }}
-                onPointerDown={() => { dragRef.current = 'end' }}
-              />
-            </div>
-
-            <div className={styles.times}>
-              <span>Start <strong>{fmt(start)}</strong></span>
-              <span>Selection <strong>{fmt(end - start)}</strong></span>
-              <span>End <strong>{fmt(end)}</strong></span>
-            </div>
+            <WaveformTrimmer
+              audioBuffer={buffer}
+              duration={duration}
+              start={start}
+              end={end}
+              onChange={onChange}
+            />
 
             <div className={styles.actions}>
-              <button className={styles.preview} onClick={playSelection}>
-                {playing ? '⏸ Stop' : '▶ Preview selection'}
-              </button>
-              <div className={styles.actionsRight}>
-                {canRevert && (
-                  <button className={styles.revert} onClick={doRevert} disabled={busy} title="Restore the original (pre-trim) audio">
-                    ↺ Revert to original
-                  </button>
-                )}
-                <button
-                  className={styles.trim}
-                  onClick={doTrim}
-                  disabled={busy || trimsWholeClip}
-                  title={trimsWholeClip ? 'Adjust the handles to select a region' : 'Trim to selection'}
-                >
-                  ✂ Trim
+              {canRevert && (
+                <button className={styles.revert} onClick={doRevert} disabled={busy} title="Restore the original (pre-trim) audio">
+                  ↺ Revert to original
                 </button>
-              </div>
+              )}
+              <button
+                className={styles.trim}
+                onClick={doTrim}
+                disabled={busy || trimsWholeClip}
+                title={trimsWholeClip ? 'Adjust the handles to select a region' : 'Trim to selection'}
+              >
+                ✂ Trim
+              </button>
             </div>
             <p className={styles.note}>Trimming replaces the audio (re-normalised) and keeps votes &amp; history. The original is backed up so you can revert.</p>
           </>

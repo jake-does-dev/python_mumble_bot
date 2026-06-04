@@ -28,6 +28,7 @@ export default function ClipCard({ clip, onToggleFavourite, onPlay, onDelete, on
   const [editError, setEditError] = useState(null)
   const [previewing, setPreviewing] = useState(false)
   const [trimming, setTrimming] = useState(false)
+  const [downloading, setDownloading] = useState(false)
   const [gainDb, setGainDb] = useState(clip.gain_db ?? 0)
   const [gainSaving, setGainSaving] = useState(false)
   const nameInnerRef = useRef(null)
@@ -42,6 +43,27 @@ export default function ClipCard({ clip, onToggleFavourite, onPlay, onDelete, on
       if (urlRef.current) URL.revokeObjectURL(urlRef.current)
     }
   }, [])
+
+  async function handleDownload() {
+    // Fetch via the API (so the auth header is sent — a plain <a href> can't),
+    // then hand the blob to a temporary download link with the real filename.
+    setDownloading(true)
+    try {
+      const res = await api.get(`/api/clips/${clip.identifier}/audio`, { responseType: 'blob' })
+      const url = URL.createObjectURL(res.data)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = clip.file || clip.name
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+      URL.revokeObjectURL(url)
+    } catch {
+      /* ignore — nothing downloaded */
+    } finally {
+      setDownloading(false)
+    }
+  }
 
   async function togglePreview() {
     if (previewing && audioRef.current) {
@@ -262,6 +284,12 @@ export default function ClipCard({ clip, onToggleFavourite, onPlay, onDelete, on
           onClick={() => onAddToQueue(clip.identifier, clip.name, pitch, speed)}
           title="Add to queue"
         >+</button>
+        <button
+          className={styles.download}
+          onClick={handleDownload}
+          disabled={downloading}
+          title="Download this clip"
+        >{downloading ? '…' : '⬇'}</button>
         <button
           className={`${styles.star} ${clip.is_favourite ? styles.starred : ''}`}
           onClick={() => onToggleFavourite(clip.identifier)}

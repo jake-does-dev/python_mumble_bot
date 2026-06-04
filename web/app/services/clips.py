@@ -16,6 +16,9 @@ from app.database import get_db
 AUDIO_DIR = Path(os.getenv("AUDIO_DIR", "/app/audio"))
 MAX_SIZE_BYTES = 50 * 1024 * 1024  # 50 MB
 MAX_DURATION_SECONDS = 10
+# A longer source may be uploaded so it can be trimmed down in the browser; the
+# stored result (the trimmed selection) must still be <= MAX_DURATION_SECONDS.
+MAX_SOURCE_DURATION_SECONDS = 60
 _NAME_RE = re.compile(r"^[a-zA-Z0-9_\-]+$")
 
 # "prefix" (default) keeps the Mumble-style prefixed IDs (oy69, ja12, ...).
@@ -113,6 +116,8 @@ class ClipsService:
         contents: bytes,
         tags: List[str],
         uploaded_by: Optional[str] = None,
+        start: Optional[float] = None,
+        end: Optional[float] = None,
     ) -> dict:
         if not _NAME_RE.match(name):
             raise HTTPException(
@@ -126,10 +131,34 @@ class ClipsService:
             )
 
         duration = _read_duration(contents, ext)
-        if duration > MAX_DURATION_SECONDS:
+        if duration > MAX_SOURCE_DURATION_SECONDS:
             raise HTTPException(
                 400,
-                f"Audio too long — max {MAX_DURATION_SECONDS} seconds",
+                f"Audio too long — max {MAX_SOURCE_DURATION_SECONDS} seconds "
+                f"(trim your selection down to {MAX_DURATION_SECONDS}s)",
+            )
+
+        # The user may pick a sub-selection in the browser to trim down to. A
+        # selection that spans the whole clip counts as "no trim".
+        trimming = (
+            start is not None
+            and end is not None
+            and (start > 0.05 or end < duration - 0.05)
+        )
+        if trimming:
+            if end <= start or (end - start) < 0.1:
+                raise HTTPException(400, "Invalid trim selection")
+            if (end - start) > MAX_DURATION_SECONDS + 0.05:
+                raise HTTPException(
+                    400,
+                    f"Trimmed selection too long — max {MAX_DURATION_SECONDS} seconds",
+                )
+        elif duration > MAX_DURATION_SECONDS:
+            # No trim, so the whole (long) clip would be stored — not allowed.
+            raise HTTPException(
+                400,
+                f"Audio too long — max {MAX_DURATION_SECONDS} seconds "
+                f"(select a shorter region to trim to)",
             )
 
         if self.db.clips.find_one({"name": name}):
@@ -144,7 +173,27 @@ class ClipsService:
             raise HTTPException(409, f"File '{filename}' already exists on disk")
         dest.write_bytes(contents)
 
-        if NORMALIZE_UPLOADS:
+        if trimming:
+            # Cut to the chosen region and re-normalise (loudnorm only — no
+            # silence-removal, since the user picked the exact cut), mirroring
+            # the post-upload trim.
+            tmp = dest.with_name(".trim_" + dest.name)
+            result = subprocess.run(
+                [
+                    "ffmpeg", "-y", "-i", str(dest),
+                    "-ss", f"{start:.3f}", "-to", f"{end:.3f}",
+                    "-af", _LOUDNORM_FILTER, "-ar", "48000", str(tmp),
+                ],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+            if result.returncode != 0 or not tmp.exists():
+                if tmp.exists():
+                    tmp.unlink()
+                dest.unlink(missing_ok=True)
+                raise HTTPException(500, "Trim failed")
+            os.replace(tmp, dest)
+        elif NORMALIZE_UPLOADS:
             _normalize_loudness(dest)
 
         doc = {
