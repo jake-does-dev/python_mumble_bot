@@ -73,7 +73,7 @@ export default function HelpModal({ onClose, isAdmin = false, voiceControl = fal
 
           <Section icon="≡" title="Queues">
             Hit <b>+</b> on a clip to add it to a queue (in the sidebar). Play the whole queue as one
-            burst. After playing a queue there's a <b>30-second cooldown</b> before the next one.
+            burst. After playing a queue there's a <b>10-second cooldown</b> before the next one.
           </Section>
 
           <Section icon="▲" title="Voting & favourites">

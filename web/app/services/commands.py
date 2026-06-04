@@ -31,6 +31,8 @@ class CommandsService:
                 "clip_name": clips.get(e["clip_ref"]) or e.get("clip_name") or e["clip_ref"],
                 "requested_by": e["requested_by"],
                 "played_at": e["played_at"].isoformat() + "Z",
+                "pitch": e.get("pitch", 0),
+                "speed": e.get("speed", 1.0),
             }
             for e in entries
         ]

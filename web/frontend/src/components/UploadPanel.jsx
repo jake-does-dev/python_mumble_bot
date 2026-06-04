@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import api from '../api'
 import WaveformTrimmer from './WaveformTrimmer'
 import styles from './UploadPanel.module.css'
@@ -8,7 +8,7 @@ const MAX_SIZE_MB = 50
 const MAX_DURATION_SECS = 10        // the stored (trimmed) clip
 const MAX_SOURCE_SECS = 60          // the source you can upload to trim down
 
-export default function UploadPanel({ onClose, onUploaded }) {
+export default function UploadPanel({ onClose, onUploaded, initialFile = null }) {
   const [file, setFile] = useState(null)
   const [name, setName] = useState('')
   const [tags, setTags] = useState('')
@@ -21,29 +21,28 @@ export default function UploadPanel({ onClose, onUploaded }) {
   const [start, setStart] = useState(0)
   const [end, setEnd] = useState(0)
 
+  const urlRef = useRef(null)
   const onChange = useCallback((s, e) => { setStart(s); setEnd(e) }, [])
 
   useEffect(() => {
-    return () => { if (previewUrl) URL.revokeObjectURL(previewUrl) }
-  }, [previewUrl])
+    return () => { if (urlRef.current) URL.revokeObjectURL(urlRef.current) }
+  }, [])
 
-  function resetWaveform() {
-    setBuffer(null)
-    setDuration(0)
-    setStart(0)
-    setEnd(0)
-  }
-
-  async function handleFileChange(e) {
-    const f = e.target.files[0]
+  // Load a chosen/dropped File: validate ext, set up preview + decode waveform.
+  const loadFile = useCallback(async (f) => {
     if (!f) return
+    const ext = f.name.split('.').pop().toLowerCase()
+    if (!['wav', 'mp3'].includes(ext)) {
+      setError('Only .wav and .mp3 files are accepted')
+      return
+    }
     setFile(f)
     setError(null)
-    resetWaveform()
-    const stem = f.name.replace(/\.[^.]+$/, '')
-    setName(stem)
-    if (previewUrl) URL.revokeObjectURL(previewUrl)
-    setPreviewUrl(URL.createObjectURL(f))
+    setBuffer(null); setDuration(0); setStart(0); setEnd(0)
+    setName(f.name.replace(/\.[^.]+$/, ''))
+    if (urlRef.current) URL.revokeObjectURL(urlRef.current)
+    urlRef.current = URL.createObjectURL(f)
+    setPreviewUrl(urlRef.current)
 
     // Decode for the waveform. If it fails (some codecs), we silently fall back
     // to a plain upload — the server still enforces the 10s limit.
@@ -64,6 +63,15 @@ export default function UploadPanel({ onClose, onUploaded }) {
     } catch {
       // No waveform; upload as-is (server validates duration).
     }
+  }, [])
+
+  // A file dropped onto the window opens this panel pre-loaded with it.
+  useEffect(() => {
+    if (initialFile) loadFile(initialFile)
+  }, [initialFile, loadFile])
+
+  function handleFileChange(e) {
+    loadFile(e.target.files[0])
   }
 
   const selLen = end - start

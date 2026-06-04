@@ -1,3 +1,4 @@
+import hashlib
 import io
 import os
 import re
@@ -14,6 +15,9 @@ from fastapi import HTTPException
 from app.database import get_db
 
 AUDIO_DIR = Path(os.getenv("AUDIO_DIR", "/app/audio"))
+# Pitch/speed-shifted preview renders are cached here. /tmp is ephemeral, so it
+# self-cleans on container restart and never touches the real audio volume.
+PREVIEW_CACHE_DIR = Path("/tmp/pmb_preview_cache")
 MAX_SIZE_BYTES = 50 * 1024 * 1024  # 50 MB
 MAX_DURATION_SECONDS = 10
 # A longer source may be uploaded so it can be trimmed down in the browser; the
@@ -345,6 +349,68 @@ class ClipsService:
             {"identifier": identifier}, {"$set": {"gain_db": gain_db}}
         )
         return self.db.clips.find_one({"identifier": identifier}, {"_id": 0})
+
+    @staticmethod
+    def _atempo_chain(tempo: float) -> str:
+        # ffmpeg's atempo only accepts 0.5–2.0, so chain factors to reach values
+        # outside that range (their product equals the requested tempo).
+        factors = []
+        t = tempo
+        while t < 0.5:
+            factors.append(0.5)
+            t /= 0.5
+        while t > 2.0:
+            factors.append(2.0)
+            t /= 2.0
+        factors.append(round(t, 4))
+        return ",".join(f"atempo={f}" for f in factors)
+
+    def render_preview(self, clip: dict, pitch: int, speed: float) -> Path:
+        # Render the clip through the SAME pitch/speed filter the bots use
+        # (asetrate shifts pitch, atempo corrects tempo → independent pitch/speed),
+        # so the browser preview is exactly what playback will sound like. The
+        # clip's gain is applied too; result is cached on disk by content+params.
+        path = AUDIO_DIR / clip["file"]
+        if not path.exists():
+            raise HTTPException(404, "Audio file not found")
+
+        gain = 10 ** ((clip.get("gain_db", 0) or 0) / 20)
+        ratio = 2 ** (pitch / 12)
+        set_rate = int(round(48000 * ratio))
+        audio_filter = ",".join(
+            [
+                "aresample=48000",
+                f"asetrate={set_rate}",
+                "aresample=48000",
+                self._atempo_chain(speed / ratio),
+                f"volume={gain:.4f}",
+            ]
+        )
+
+        mtime = path.stat().st_mtime
+        key = hashlib.sha1(
+            f"{clip['file']}|{mtime}|{pitch}|{speed}|{gain:.4f}".encode()
+        ).hexdigest()
+        PREVIEW_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+        out = PREVIEW_CACHE_DIR / f"{key}.wav"
+        if out.exists():
+            return out
+
+        tmp = out.with_suffix(".tmp.wav")
+        result = subprocess.run(
+            [
+                "ffmpeg", "-y", "-hide_banner", "-loglevel", "error",
+                "-i", str(path), "-af", audio_filter, "-ar", "48000", str(tmp),
+            ],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        if result.returncode != 0 or not tmp.exists():
+            if tmp.exists():
+                tmp.unlink()
+            raise HTTPException(500, "Preview render failed")
+        os.replace(tmp, out)
+        return out
 
     def delete_clip(self, identifier: str) -> None:
         clip = self.db.clips.find_one({"identifier": identifier})

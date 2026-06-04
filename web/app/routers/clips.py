@@ -141,15 +141,30 @@ def revert_clip(identifier: str, current_user: str = Depends(get_current_user)):
 
 
 @router.get("/{identifier}/audio")
-def clip_audio(identifier: str, current_user: str = Depends(get_current_user)):
-    clip = ClipsService().get_clip_by_ref(identifier)
+def clip_audio(
+    identifier: str,
+    pitch: int = 0,
+    speed: float = 1.0,
+    current_user: str = Depends(get_current_user),
+):
+    clips_service = ClipsService()
+    clip = clips_service.get_clip_by_ref(identifier)
     if not clip:
         raise HTTPException(404, f"Clip '{identifier}' not found")
     path = AUDIO_DIR / clip["file"]
     if not path.exists():
         raise HTTPException(404, "Audio file not found")
-    media_type = "audio/mpeg" if path.suffix.lower() == ".mp3" else "audio/wav"
-    return FileResponse(path, media_type=media_type)
+
+    # No pitch/speed → serve the raw file (waveform, download, plain preview).
+    pitch = max(-12, min(12, pitch))
+    speed = max(0.5, min(4.0, speed))
+    if pitch == 0 and abs(speed - 1.0) < 1e-3:
+        media_type = "audio/mpeg" if path.suffix.lower() == ".mp3" else "audio/wav"
+        return FileResponse(path, media_type=media_type)
+
+    # Otherwise render it exactly as the bot would play it.
+    out = clips_service.render_preview(clip, pitch, speed)
+    return FileResponse(out, media_type="audio/wav")
 
 
 @router.delete("/{identifier}")

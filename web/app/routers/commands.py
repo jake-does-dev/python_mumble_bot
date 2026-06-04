@@ -13,7 +13,7 @@ from app.services.users import UsersService
 router = APIRouter(prefix="/api/commands", tags=["commands"])
 
 # Per-user cooldown between queue plays (in-process; single uvicorn worker).
-QUEUE_COOLDOWN_SECONDS = 30
+QUEUE_COOLDOWN_SECONDS = 10
 _last_queue_play = {}
 
 # Global cooldown on bot restarts — a restart affects everyone, so it's shared
