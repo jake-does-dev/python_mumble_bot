@@ -15,11 +15,12 @@ const PERIODS = [
 const WEEKDAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
 
 function BarList({ items, labelKey, valueKey, empty, onItemClick }) {
-  const max = items.reduce((m, it) => Math.max(m, it[valueKey]), 0) || 1
-  if (items.length === 0) return <p className={styles.empty}>{empty}</p>
+  const list = items || []
+  const max = list.reduce((m, it) => Math.max(m, it[valueKey]), 0) || 1
+  if (list.length === 0) return <p className={styles.empty}>{empty}</p>
   return (
     <ol className={styles.barList}>
-      {items.map((it, i) => (
+      {list.map((it, i) => (
         <li key={i} className={styles.barRow}>
           <span
             className={`${styles.barLabel} ${onItemClick ? styles.clickable : ''}`}
@@ -117,43 +118,56 @@ function WordCloud({ items, onItemClick }) {
   )
 }
 
+const MODES = [
+  { key: 'clips', label: '🔊 Clips' },
+  { key: 'songs', label: '🎵 Songs' },
+]
+
 export default function StatsPage() {
   const { logout } = useAuth()
   const { theme, toggleTheme } = useTheme()
   const navigate = useNavigate()
+  const [mode, setMode] = useState('clips')   // 'clips' | 'songs'
   const [period, setPeriod] = useState('7d')
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
 
-  // Drill-down: { kind: 'user' | 'clip', key }
+  // Drill-down: { kind: 'user' | 'clip' | 'song', key }. The endpoints used
+  // depend on the active mode (clip stats vs song stats).
   const [drill, setDrill] = useState(null)
   const [drillData, setDrillData] = useState(null)
   const [drillLoading, setDrillLoading] = useState(false)
 
   const tzOffset = useMemo(() => new Date().getTimezoneOffset(), [])
+  const songs = mode === 'songs'
 
   useEffect(() => {
     setLoading(true)
-    api.get('/api/stats/', { params: { period, tz_offset: tzOffset } })
+    setDrill(null)
+    const path = songs ? '/api/stats/songs/' : '/api/stats/'
+    api.get(path, { params: { period, tz_offset: tzOffset } })
       .then(res => { setData(res.data); setError(null) })
       .catch(err => {
         if (err.response?.status === 401) { logout(); navigate('/login') }
         else setError('Failed to load statistics')
       })
       .finally(() => setLoading(false))
-  }, [period, tzOffset])
+  }, [period, tzOffset, mode])
 
   const loadDrill = useCallback((kind, key) => {
     setDrill({ kind, key })
     setDrillLoading(true)
     setDrillData(null)
-    const path = kind === 'user' ? `/api/stats/user/${encodeURIComponent(key)}` : `/api/stats/clip/${encodeURIComponent(key)}`
+    let path
+    if (kind === 'song') path = `/api/stats/songs/song/${encodeURIComponent(key)}`
+    else if (kind === 'user') path = songs ? `/api/stats/songs/user/${encodeURIComponent(key)}` : `/api/stats/user/${encodeURIComponent(key)}`
+    else path = `/api/stats/clip/${encodeURIComponent(key)}`
     api.get(path, { params: { period, tz_offset: tzOffset } })
       .then(res => setDrillData(res.data))
       .catch(() => setDrillData(null))
       .finally(() => setDrillLoading(false))
-  }, [period, tzOffset])
+  }, [period, tzOffset, songs])
 
   // Refresh an open drill-down when the period changes.
   useEffect(() => {
@@ -190,15 +204,28 @@ export default function StatsPage() {
       </header>
 
       <div className={styles.periodBar}>
-        {PERIODS.map(p => (
-          <button
-            key={p.key}
-            className={`${styles.periodBtn} ${period === p.key ? styles.active : ''}`}
-            onClick={() => setPeriod(p.key)}
-          >
-            {p.label}
-          </button>
-        ))}
+        <div className={styles.modeTabs}>
+          {MODES.map(m => (
+            <button
+              key={m.key}
+              className={`${styles.modeBtn} ${mode === m.key ? styles.active : ''}`}
+              onClick={() => { if (m.key !== mode) { setData(null); setLoading(true); setMode(m.key) } }}
+            >
+              {m.label}
+            </button>
+          ))}
+        </div>
+        <div className={styles.periodGroup}>
+          {PERIODS.map(p => (
+            <button
+              key={p.key}
+              className={`${styles.periodBtn} ${period === p.key ? styles.active : ''}`}
+              onClick={() => setPeriod(p.key)}
+            >
+              {p.label}
+            </button>
+          ))}
+        </div>
       </div>
 
       <div className={styles.scroll}>
@@ -207,7 +234,92 @@ export default function StatsPage() {
 
         {!loading && !error && data && (
           data.total_plays === 0 ? (
-            <p className={styles.status}>No plays recorded in this period.</p>
+            <p className={styles.status}>No {songs ? 'songs' : 'plays'} recorded in this period.</p>
+          ) : songs ? (
+          <>
+            {data.song_of_week && (
+              <div
+                className={styles.cotw}
+                onClick={() => loadDrill('song', data.song_of_week.name)}
+                title="View song stats"
+              >
+                <span className={styles.cotwIcon}>🏆</span>
+                <div className={styles.cotwBody}>
+                  <span className={styles.cotwLabel}>Song of the week</span>
+                  <span className={styles.cotwName}>{data.song_of_week.name}</span>
+                </div>
+                <span className={styles.cotwCount}>{data.song_of_week.count}<small>plays</small></span>
+              </div>
+            )}
+
+            <div className={styles.cards}>
+              <div className={styles.card}>
+                <span className={styles.cardValue}>{data.total_plays}</span>
+                <span className={styles.cardLabel}>Total plays</span>
+              </div>
+              <div className={styles.card}>
+                <span className={styles.cardValue}>{data.unique_songs}</span>
+                <span className={styles.cardLabel}>Songs played</span>
+              </div>
+              <div className={styles.card}>
+                <span className={styles.cardValue}>{data.unique_users}</span>
+                <span className={styles.cardLabel}>Active users</span>
+              </div>
+              <div className={styles.card}>
+                <span className={styles.cardValue}>{busiest}</span>
+                <span className={styles.cardLabel}>Busiest time</span>
+              </div>
+            </div>
+
+            <section className={styles.panel}>
+              <h2 className={styles.panelTitle}>Plays over time</h2>
+              <Timeline data={data.timeline} />
+            </section>
+
+            <section className={styles.panel}>
+              <h2 className={styles.panelTitle}>Song cloud <span className={styles.hint}>— click any song</span></h2>
+              <WordCloud items={data.song_cloud} onItemClick={name => loadDrill('song', name)} />
+            </section>
+
+            <div className={styles.twoCol}>
+              <section className={styles.panel}>
+                <h2 className={styles.panelTitle}>Most played songs</h2>
+                <BarList items={data.top_songs} labelKey="name" valueKey="count" empty="No songs played." onItemClick={name => loadDrill('song', name)} />
+              </section>
+              <section className={styles.panel}>
+                <h2 className={styles.panelTitle}>Top players</h2>
+                <BarList items={data.top_users} labelKey="user" valueKey="count" empty="No plays yet." onItemClick={user => loadDrill('user', user)} />
+              </section>
+            </div>
+
+            <section className={styles.panel}>
+              <h2 className={styles.panelTitle}>Activity by day &amp; hour</h2>
+              <Heatmap grid={data.heatmap} />
+            </section>
+
+            <div className={styles.twoCol}>
+              <section className={styles.panel}>
+                <h2 className={styles.panelTitle}>Favourite instruments <span className={styles.hint}>— clips used to play tunes</span></h2>
+                <BarList items={data.top_instruments} labelKey="name" valueKey="count" empty="No songs played." />
+              </section>
+              <section className={styles.panel}>
+                <h2 className={styles.panelTitle}>Who plays what</h2>
+                {data.user_favourites.length === 0
+                  ? <p className={styles.empty}>No plays yet.</p>
+                  : (
+                    <ul className={styles.favList}>
+                      {data.user_favourites.map((f, i) => (
+                        <li key={i} className={styles.favRow}>
+                          <span className={`${styles.favUser} ${styles.clickable}`} onClick={() => loadDrill('user', f.user)}>{f.user}</span>
+                          <span className={`${styles.favClip} ${styles.clickable}`} title={f.song_name} onClick={() => loadDrill('song', f.song_name)}>{f.song_name}</span>
+                          <span className={styles.favCount}>{f.count}×</span>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+              </section>
+            </div>
+          </>
           ) : (
           <>
             {data.clip_of_week && (
@@ -320,7 +432,9 @@ export default function StatsPage() {
           <div className={styles.modal} onClick={e => e.stopPropagation()}>
             <div className={styles.modalHead}>
               <div>
-                <span className={styles.modalKind}>{drill.kind === 'user' ? 'Player' : 'Clip'}</span>
+                <span className={styles.modalKind}>
+                  {drill.kind === 'user' ? 'Player' : drill.kind === 'song' ? 'Song' : 'Clip'}
+                </span>
                 <h3 className={styles.modalTitle}>{drill.key}</h3>
               </div>
               <button className={styles.modalClose} onClick={() => setDrill(null)}>✕</button>
@@ -333,7 +447,7 @@ export default function StatsPage() {
                 <div className={styles.modalStats}>
                   <div><strong>{drillData.total_plays}</strong><span>plays</span></div>
                   {drill.kind === 'user'
-                    ? <div><strong>{drillData.unique_clips}</strong><span>clips</span></div>
+                    ? <div><strong>{songs ? drillData.unique_songs : drillData.unique_clips}</strong><span>{songs ? 'songs' : 'clips'}</span></div>
                     : <div><strong>{drillData.unique_users}</strong><span>players</span></div>}
                   {drill.kind === 'user' && drillData.busiest_hour != null && (
                     <div><strong>{String(drillData.busiest_hour).padStart(2, '0')}:00</strong><span>busiest</span></div>
@@ -343,10 +457,24 @@ export default function StatsPage() {
                 <h4 className={styles.modalSub}>Plays over time</h4>
                 <Timeline data={drillData.timeline} />
 
-                {drill.kind === 'user' ? (
+                {drill.kind === 'user' && songs ? (
+                  <>
+                    <h4 className={styles.modalSub}>Most played songs</h4>
+                    <BarList items={drillData.top_songs} labelKey="name" valueKey="count" empty="No songs." onItemClick={name => loadDrill('song', name)} />
+                    <h4 className={styles.modalSub}>Favourite instruments</h4>
+                    <BarList items={drillData.top_instruments} labelKey="name" valueKey="count" empty="No instruments." />
+                  </>
+                ) : drill.kind === 'user' ? (
                   <>
                     <h4 className={styles.modalSub}>Most played clips</h4>
                     <BarList items={drillData.top_clips} labelKey="name" valueKey="count" empty="No clips." onItemClick={name => loadDrill('clip', name)} />
+                  </>
+                ) : drill.kind === 'song' ? (
+                  <>
+                    <h4 className={styles.modalSub}>Top players</h4>
+                    <BarList items={drillData.top_users} labelKey="user" valueKey="count" empty="No players." onItemClick={user => loadDrill('user', user)} />
+                    <h4 className={styles.modalSub}>Instruments used</h4>
+                    <BarList items={drillData.top_instruments} labelKey="name" valueKey="count" empty="No instruments." />
                   </>
                 ) : (
                   <>

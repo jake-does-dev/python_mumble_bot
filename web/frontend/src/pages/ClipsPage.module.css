@@ -374,6 +374,36 @@
   overflow: hidden;
 }
 
+.mainTabs {
+  display: flex;
+  gap: 0.4rem;
+  margin-bottom: 0.75rem;
+  flex-shrink: 0;
+}
+
+.mainTab {
+  padding: 0.5rem 1.1rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text);
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+
+.mainTab:hover {
+  border-color: var(--accent-border);
+  color: var(--text-h);
+}
+
+.mainTabActive {
+  background: var(--accent-bg);
+  border-color: var(--accent-border);
+  color: var(--accent);
+}
+
 .clipsScroll {
   flex: 1;
   overflow-y: auto;

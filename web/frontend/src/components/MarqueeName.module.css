@@ -1,0 +1,19 @@
+.name {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.inner {
+  display: inline-block;
+}
+
+.name:hover .inner[data-scrollable] {
+  animation: marquee 1.8s ease-in-out infinite alternate;
+}
+
+@keyframes marquee {
+  0%, 12% { transform: translateX(0); }
+  88%, 100% { transform: translateX(var(--name-overflow, 0px)); }
+}

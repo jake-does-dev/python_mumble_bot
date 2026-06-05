@@ -1,22 +1,39 @@
 import asyncio
 import audioop
+import io
 import logging
 import os
+import statistics
+import subprocess as sp
 import threading
 import time
 from pathlib import Path
 
 import discord
 from pmb_core.audio import transform
+from pmb_core.audio.midi import parse_midi
 
 log = logging.getLogger("pmb.discord.playback")
 
 AUDIO_DIR = Path(os.getenv("AUDIO_DIR", "audio"))
+SONGS_DIR = AUDIO_DIR / "music"
 
 # 20ms of 48kHz 16-bit stereo silence (discord.py reads 3840-byte PCM frames).
 SILENCE_FRAME = b"\x00" * 3840
+FRAME_BYTES = 3840
 
+# Mixer voice key for sequential queue playback (one shared lane, plays in order).
 QUEUE_VOICE = "__queue__"
+
+# Song render constants. Discord wants 48kHz 16-bit STEREO (4 bytes/frame).
+SR = 48000
+BYTES_PER_FRAME = 4  # 2 channels * 2 bytes
+# Don't pitch-shift the instrument absurdly far — a ±2 octave window keeps it
+# musical-ish; out-of-range notes clamp (octave folding is deferred).
+MAX_SEMITONE_SHIFT = 24
+# Floor each note's audio so very short notes still pop rather than click out.
+MIN_NOTE_SECONDS = 0.08
+SONG_LOUDNORM = "loudnorm=I=-16:TP=-1.5:LRA=11"
 
 
 def build_source(file_name, speed, shift, volume):
@@ -31,6 +48,120 @@ def build_source(file_name, speed, shift, volume):
         str(path),
         options='-af "{0}"'.format(audio_filter),
     )
+
+
+def _render_clip_pcm(clip_path, shift):
+    """Render one clip, pitch-shifted by `shift` semitones, to 48kHz stereo
+    s16le PCM bytes (volume 1.0 — overall level is set once at the end)."""
+    audio_filter = transform.generate_standard_filter(1.0, 1.0, shift)
+    cmd = [
+        "ffmpeg", "-hide_banner", "-loglevel", "error",
+        "-i", str(clip_path),
+        "-af", audio_filter,
+        "-ar", str(SR), "-ac", "2", "-f", "s16le", "pipe:1",
+    ]
+    proc = sp.run(cmd, stdout=sp.PIPE, stderr=sp.PIPE)
+    if proc.returncode != 0:
+        log.warning("song: ffmpeg shift %s failed: %s", shift, proc.stderr.decode()[:200])
+    return proc.stdout
+
+
+def build_song_source(clip_file, song_file, transpose, speed, gain_db, base_volume, max_seconds=0):
+    """Render a whole MIDI song into one stereo PCM source, using `clip_file` as
+    the instrument. Returns a discord.PCMAudio (or None if nothing to play).
+
+    Each note triggers the clip pitch-shifted to that note's pitch (relative to
+    the song's median pitch, so shifts stay small), laid onto a silent canvas at
+    the note's onset and capped to its duration. Overlapping notes (chords) mix
+    via audioop.add. A final loudnorm tames peaks and sets the level.
+
+    `max_seconds` (0 = no limit) caps the rendered output length: notes starting
+    after it are dropped and the canvas is truncated to it.
+    Blocking (spawns ffmpeg) — call via asyncio.to_thread.
+    """
+    song_path = SONGS_DIR.joinpath(song_file)
+    clip_path = AUDIO_DIR.joinpath(clip_file)
+    notes, _duration = parse_midi(str(song_path))
+    if not notes:
+        return None
+
+    speed = max(0.25, min(4.0, float(speed or 1.0)))
+    transpose = int(transpose or 0)
+    root = int(statistics.median(n.pitch for n in notes))
+    limit_bytes = int(max(0, max_seconds) * SR) * BYTES_PER_FRAME  # 0 = no limit
+
+    def shift_for(note):
+        return max(-MAX_SEMITONE_SHIFT, min(MAX_SEMITONE_SHIFT, note.pitch - root + transpose))
+
+    # Render each distinct pitch-shift once (a tune uses only a handful).
+    shift_pcm = {}
+    for n in notes:
+        if limit_bytes and int((n.start / speed) * SR) * BYTES_PER_FRAME >= limit_bytes:
+            continue
+        shift = shift_for(n)
+        if shift not in shift_pcm:
+            shift_pcm[shift] = _render_clip_pcm(clip_path, shift)
+
+    min_note_bytes = int(MIN_NOTE_SECONDS * SR) * BYTES_PER_FRAME
+    placements = []
+    max_end = 0
+    for n in notes:
+        offset = int((n.start / speed) * SR) * BYTES_PER_FRAME
+        if limit_bytes and offset >= limit_bytes:
+            continue
+        pcm = shift_pcm.get(shift_for(n)) or b""
+        if not pcm:
+            continue
+        cap = max(min_note_bytes, int((n.duration / speed) * SR) * BYTES_PER_FRAME)
+        seg = pcm[:cap]
+        if limit_bytes:
+            seg = seg[:limit_bytes - offset]  # don't ring past the cap
+        if not seg:
+            continue
+        placements.append((offset, seg))
+        max_end = max(max_end, offset + len(seg))
+
+    if max_end == 0:
+        return None
+
+    canvas = bytearray(max_end)
+    for offset, seg in placements:
+        region = bytes(canvas[offset:offset + len(seg)])
+        if len(region) < len(seg):
+            seg = seg[:len(region)]
+        if not seg:
+            continue
+        mixed = audioop.add(region, seg, 2)
+        canvas[offset:offset + len(mixed)] = mixed
+
+    pcm_out = _finalize_song(bytes(canvas), base_volume * transform.gain_db_to_multiplier(gain_db))
+
+    # discord.PCMAudio drops a trailing partial frame, so pad to a frame boundary.
+    if len(pcm_out) % FRAME_BYTES:
+        pcm_out += b"\x00" * (FRAME_BYTES - len(pcm_out) % FRAME_BYTES)
+    return discord.PCMAudio(io.BytesIO(pcm_out))
+
+
+def _finalize_song(pcm, volume):
+    """Loudness-normalise the assembled canvas, apply the overall volume, and
+    fade the last 30ms out (clean ending, no click when the cap truncates a
+    sound mid-way). Falls back to a plain volume scale if ffmpeg fails."""
+    dur = len(pcm) / (SR * BYTES_PER_FRAME)
+    fade = min(0.03, dur)
+    audio_filter = "{0},volume={1},afade=t=out:st={2:.3f}:d={3:.3f}".format(
+        SONG_LOUDNORM, volume, max(0.0, dur - fade), fade
+    )
+    cmd = [
+        "ffmpeg", "-hide_banner", "-loglevel", "error",
+        "-f", "s16le", "-ar", str(SR), "-ac", "2", "-i", "pipe:0",
+        "-af", audio_filter,
+        "-f", "s16le", "-ar", str(SR), "-ac", "2", "pipe:1",
+    ]
+    proc = sp.run(cmd, input=pcm, stdout=sp.PIPE, stderr=sp.PIPE)
+    if proc.returncode == 0 and proc.stdout:
+        return proc.stdout
+    log.warning("song: finalize loudnorm failed, using raw mix")
+    return audioop.mul(pcm, 2, volume)
 
 
 class _MixerStream(discord.AudioSource):

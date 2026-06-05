@@ -358,6 +358,10 @@ class DiscordBot(commands.Bot):
                     player.panic()
             return
 
+        if cmd_type == "play_song":
+            await self._play_song(command)
+            return
+
         voice_client = self.active_voice_client()
         if voice_client is None:
             log.warning(
@@ -406,6 +410,45 @@ class DiscordBot(commands.Bot):
             command["clip_ref"],
             (time.monotonic() - t0) * 1000,
         )
+
+    async def _play_song(self, command):
+        """Play a MIDI song using a clip as the instrument (web-triggered)."""
+        voice_client = self.active_voice_client()
+        if voice_client is None:
+            log.warning("play_song: not in a voice channel; skipping")
+            return
+        song_file = command.get("song")
+        clip_ref = command.get("clip_ref")
+        if not song_file or not clip_ref:
+            log.warning("play_song: missing song or clip_ref")
+            return
+        doc = await asyncio.to_thread(self.resolve_clip, clip_ref)
+        if doc is None:
+            log.warning("play_song: clip not found: %s", clip_ref)
+            return
+
+        transpose = int(command.get("transpose", 0))
+        speed = float(command.get("speed", 1.0))
+        gain_db = float(command.get("gain", 0)) + float(doc.get("gain_db", 0))
+        max_seconds = float(command.get("max_seconds", 0) or 0)
+        base_volume = await asyncio.to_thread(self.mongo.get_volume)
+        # Announce is enqueued as its own command by the web (see enqueue_song),
+        # mirroring the queue path — so we don't announce again here.
+
+        t0 = time.monotonic()
+        source = await asyncio.to_thread(
+            playback.build_song_source,
+            doc["file"], song_file, transpose, speed, gain_db, base_volume, max_seconds,
+        )
+        log.info(
+            "[timing] song render %s on %s: %.0fms",
+            song_file, clip_ref, (time.monotonic() - t0) * 1000,
+        )
+        if source is None:
+            log.warning("play_song: nothing to render for %s", song_file)
+            return
+        player = self.get_player(voice_client)
+        player.play_now("__song__", source)
 
 
 def register_commands(bot):

@@ -4,9 +4,9 @@ import WaveformTrimmer from './WaveformTrimmer'
 import styles from './UploadPanel.module.css'
 
 const NAME_RE = /^[a-zA-Z0-9_\-]+$/
-const MAX_SIZE_MB = 50
+const MAX_SIZE_MB = 100
 const MAX_DURATION_SECS = 10        // the stored (trimmed) clip
-const MAX_SOURCE_SECS = 60          // the source you can upload to trim down
+const MAX_SOURCE_SECS = 300         // the source you can upload to trim down (5 min)
 
 export default function UploadPanel({ onClose, onUploaded, initialFile = null }) {
   const [file, setFile] = useState(null)

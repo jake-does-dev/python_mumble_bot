@@ -1,0 +1,126 @@
+.card {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  background: var(--bg);
+  transition: box-shadow 0.15s;
+}
+
+.card:hover {
+  box-shadow: var(--shadow);
+}
+
+.cardList {
+  flex-direction: row;
+  align-items: center;
+  padding: 0.625rem 1rem;
+  gap: 1rem;
+}
+
+.info {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.cardList .info {
+  flex: 1;
+}
+
+.name {
+  font-weight: 500;
+  color: var(--text-h);
+  font-size: 0.95rem;
+  line-height: 1.3;
+}
+
+.meta {
+  font-size: 0.72rem;
+  color: var(--text);
+}
+
+.actions {
+  display: flex;
+  gap: 0.4rem;
+  align-items: center;
+}
+
+.cardList .actions {
+  flex-shrink: 0;
+}
+
+.play {
+  border: 1px solid var(--accent-border);
+  background: var(--accent-bg);
+  color: var(--accent);
+  border-radius: 6px;
+  padding: 5px 14px;
+  font-size: 0.85rem;
+  cursor: pointer;
+  font-weight: 600;
+  flex: 1;
+}
+
+.cardList .play {
+  flex: 0 0 auto;
+}
+
+.play:hover:not(:disabled) {
+  background: var(--accent);
+  color: #fff;
+}
+
+.play:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.iconBtn {
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-h);
+  border-radius: 6px;
+  padding: 5px 10px;
+  font-size: 0.85rem;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.iconBtn:hover {
+  background: var(--accent-bg);
+  border-color: var(--accent-border);
+  color: var(--accent);
+}
+
+.delConfirm {
+  background: #fee2e2;
+  border-color: #ef4444;
+  color: #ef4444;
+}
+
+.delConfirm:hover {
+  background: #ef4444;
+  color: #fff;
+}
+
+.renameRow {
+  display: flex;
+  gap: 0.3rem;
+  align-items: center;
+}
+
+.renameInput {
+  flex: 1;
+  min-width: 0;
+  padding: 0.3rem 0.5rem;
+  border: 1px solid var(--accent);
+  border-radius: 6px;
+  background: var(--code-bg);
+  color: var(--text-h);
+  font-size: 0.9rem;
+  outline: none;
+}

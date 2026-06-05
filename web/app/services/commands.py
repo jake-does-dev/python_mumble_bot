@@ -110,6 +110,59 @@ class CommandsService:
         if log_docs:
             self.db.play_log.insert_many(log_docs)
 
+    def enqueue_song(
+        self,
+        song_filename: str,
+        song_name: str,
+        clip_ref: str,
+        clip_name: str,
+        requested_by: str,
+        transpose: int = 0,
+        speed: float = 1.0,
+        gain: float = 0.0,
+        max_seconds: float = 0.0,
+        song_id: str = None,
+    ) -> None:
+        now = datetime.utcnow()
+        # Durable, append-only record of song plays (its own log, separate from
+        # the per-clip play_log).
+        self.db.song_log.insert_one(
+            {
+                "song_id": song_id,
+                "song_name": song_name,
+                "clip_ref": clip_ref,
+                "clip_name": clip_name,
+                "requested_by": requested_by,
+                "transpose": transpose,
+                "speed": speed,
+                "gain": gain,
+                "max_seconds": max_seconds,
+                "played_at": now,
+            }
+        )
+        self.db.pending_commands.insert_many([
+            {
+                "type": "announce",
+                "message": f"<b>{requested_by}</b> is playing 🎵 {song_name} on {clip_name}",
+                "status": "pending",
+                "created_at": now,
+            },
+            {
+                "type": "play_song",
+                "song": song_filename,
+                "song_name": song_name,
+                "clip_ref": clip_ref,
+                "clip_name": clip_name,
+                "requested_by": requested_by,
+                "transpose": transpose,
+                "speed": speed,
+                "gain": gain,
+                "max_seconds": max_seconds,
+                "status": "pending",
+                "created_at": now + timedelta(microseconds=1),
+            },
+        ])
+
     def last_stop(self) -> dict:
         doc = self.db.pending_commands.find_one(
             {"type": "stop"}, sort=[("created_at", pymongo.DESCENDING)]
@@ -125,7 +178,7 @@ class CommandsService:
         # Cancel anything still queued so it won't start, then tell the bot to
         # clear whatever is currently playing.
         self.db.pending_commands.update_many(
-            {"status": "pending", "type": {"$in": ["play", "queue_play"]}},
+            {"status": "pending", "type": {"$in": ["play", "queue_play", "play_song"]}},
             {"$set": {"status": "done"}},
         )
         self.db.pending_commands.insert_one(
@@ -152,7 +205,7 @@ class CommandsService:
         # Cancel anything still queued (it shouldn't fire on a freshly-restarted
         # bot), then ask the bot to exit so Docker restarts it and it rejoins.
         self.db.pending_commands.update_many(
-            {"status": "pending", "type": {"$in": ["play", "queue_play"]}},
+            {"status": "pending", "type": {"$in": ["play", "queue_play", "play_song"]}},
             {"$set": {"status": "done"}},
         )
         self.db.pending_commands.insert_one(

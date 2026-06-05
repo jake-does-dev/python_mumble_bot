@@ -201,6 +201,188 @@ class StatsService:
             "timeline": self._timeline(records, period, now, tz_offset),
         }
 
+    # -- songs -------------------------------------------------------------
+    #
+    # Mirrors the clip stats but reads the durable `song_log` collection. Each
+    # song_log doc: {song_id, song_name, clip_ref, clip_name, requested_by,
+    # transpose, speed, gain, max_seconds, played_at}. The clip used to "play"
+    # the tune is the instrument — counted separately as a music-specific stat.
+
+    def _song_maps(self):
+        names = {}
+        for s in self.db.songs.find({}, {"id": 1, "name": 1, "_id": 0}):
+            names[s["id"]] = s["name"]
+        return names
+
+    def _fetch_songs(self, period, now, extra=None):
+        query = {}
+        delta = _PERIODS.get(period, _PERIODS["7d"])
+        if delta is not None:
+            query["played_at"] = {"$gte": now - delta}
+        if extra:
+            query.update(extra)
+        return list(self.db.song_log.find(query, {"_id": 0}))
+
+    @staticmethod
+    def _song_label(rec, song_names):
+        sid = rec.get("song_id")
+        return song_names.get(sid) or rec.get("song_name") or sid or "unknown"
+
+    @staticmethod
+    def _instrument_label(rec, clip_names):
+        ref = rec.get("clip_ref")
+        return clip_names.get(ref) or rec.get("clip_name") or ref
+
+    def get_song_stats(self, period: str = "7d", tz_offset: int = 0) -> dict:
+        if period not in _PERIODS:
+            period = "7d"
+        now = datetime.utcnow()
+        records = self._fetch_songs(period, now)
+        song_names = self._song_maps()
+        clip_names, _ = self._clip_maps()
+
+        def to_local(dt):
+            return dt - timedelta(minutes=tz_offset)
+
+        song_counts = Counter()
+        user_counts = Counter()
+        user_song = defaultdict(Counter)
+        instrument_counts = Counter()
+        heatmap = [[0] * 24 for _ in range(7)]
+
+        for rec in records:
+            label = self._song_label(rec, song_names)
+            user = rec.get("requested_by") or "unknown"
+            song_counts[label] += 1
+            user_counts[user] += 1
+            user_song[user][label] += 1
+            inst = self._instrument_label(rec, clip_names)
+            if inst:
+                instrument_counts[inst] += 1
+            played = rec.get("played_at")
+            if isinstance(played, datetime):
+                local = to_local(played)
+                heatmap[local.weekday()][local.hour] += 1
+
+        timeline = self._timeline(records, period, now, tz_offset)
+        hour_totals = [sum(heatmap[d][h] for d in range(7)) for h in range(24)]
+        day_totals = [sum(heatmap[d]) for d in range(7)]
+        busiest_hour = max(range(24), key=lambda h: hour_totals[h]) if records else None
+        busiest_day = (
+            WEEKDAYS[max(range(7), key=lambda d: day_totals[d])] if records else None
+        )
+
+        week = self._fetch_songs("7d", now)
+        week_counts = Counter(self._song_label(r, song_names) for r in week)
+        song_of_week = None
+        if week_counts:
+            name, count = week_counts.most_common(1)[0]
+            song_of_week = {"name": name, "count": count}
+
+        return {
+            "period": period,
+            "total_plays": len(records),
+            "unique_songs": len(song_counts),
+            "unique_users": len(user_counts),
+            "song_of_week": song_of_week,
+            "top_songs": [
+                {"name": n, "count": c} for n, c in song_counts.most_common(15)
+            ],
+            "song_cloud": [
+                {"name": n, "count": c} for n, c in song_counts.most_common(50)
+            ],
+            "top_users": [
+                {"user": u, "count": c} for u, c in user_counts.most_common()
+            ],
+            "top_instruments": [
+                {"name": n, "count": c} for n, c in instrument_counts.most_common(15)
+            ],
+            "user_favourites": [
+                {
+                    "user": user,
+                    "song_name": user_song[user].most_common(1)[0][0],
+                    "count": user_song[user].most_common(1)[0][1],
+                    "total": total,
+                }
+                for user, total in user_counts.most_common()
+            ],
+            "timeline": timeline,
+            "heatmap": heatmap,
+            "busiest_hour": busiest_hour,
+            "busiest_day": busiest_day,
+        }
+
+    def get_song_detail_stats(self, name: str, period: str = "7d", tz_offset: int = 0):
+        if period not in _PERIODS:
+            period = "7d"
+        now = datetime.utcnow()
+        # Prefer the stable id (survives renames); fall back to recorded name.
+        song = self.db.songs.find_one({"name": name}, {"id": 1, "_id": 0})
+        extra = {"song_id": song["id"]} if song else {"song_name": name}
+        records = self._fetch_songs(period, now, extra)
+        clip_names, _ = self._clip_maps()
+
+        user_counts = Counter(r.get("requested_by") or "unknown" for r in records)
+        instrument_counts = Counter()
+        for r in records:
+            inst = self._instrument_label(r, clip_names)
+            if inst:
+                instrument_counts[inst] += 1
+        played_times = [
+            r["played_at"] for r in records if isinstance(r.get("played_at"), datetime)
+        ]
+
+        return {
+            "name": name,
+            "period": period,
+            "total_plays": len(records),
+            "unique_users": len(user_counts),
+            "first_played": min(played_times).isoformat() + "Z" if played_times else None,
+            "last_played": max(played_times).isoformat() + "Z" if played_times else None,
+            "top_users": [
+                {"user": u, "count": c} for u, c in user_counts.most_common(15)
+            ],
+            "top_instruments": [
+                {"name": n, "count": c} for n, c in instrument_counts.most_common(15)
+            ],
+            "timeline": self._timeline(records, period, now, tz_offset),
+        }
+
+    def get_song_user_stats(self, username: str, period: str = "7d", tz_offset: int = 0):
+        if period not in _PERIODS:
+            period = "7d"
+        now = datetime.utcnow()
+        records = self._fetch_songs(period, now, {"requested_by": username})
+        song_names = self._song_maps()
+        clip_names, _ = self._clip_maps()
+
+        song_counts = Counter(self._song_label(r, song_names) for r in records)
+        instrument_counts = Counter()
+        hours = Counter()
+        for r in records:
+            inst = self._instrument_label(r, clip_names)
+            if inst:
+                instrument_counts[inst] += 1
+            played = r.get("played_at")
+            if isinstance(played, datetime):
+                hours[(played - timedelta(minutes=tz_offset)).hour] += 1
+        busiest_hour = hours.most_common(1)[0][0] if hours else None
+
+        return {
+            "username": username,
+            "period": period,
+            "total_plays": len(records),
+            "unique_songs": len(song_counts),
+            "busiest_hour": busiest_hour,
+            "top_songs": [
+                {"name": n, "count": c} for n, c in song_counts.most_common(15)
+            ],
+            "top_instruments": [
+                {"name": n, "count": c} for n, c in instrument_counts.most_common(15)
+            ],
+            "timeline": self._timeline(records, period, now, tz_offset),
+        }
+
     # -- timeline ----------------------------------------------------------
 
     def _timeline(self, records, period, now, tz_offset):

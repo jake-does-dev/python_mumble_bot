@@ -82,7 +82,7 @@ export default function HelpModal({ onClose, isAdmin = false, voiceControl = fal
           </Section>
 
           <Section icon="↑" title="Uploading">
-            Use <b>↑ Upload</b> to add a clip (.wav / .mp3). You can drop in a file up to <b>60s</b>
+            Use <b>↑ Upload</b> to add a clip (.wav / .mp3). You can drop in a file up to <b>5 min</b>
             and <b>drag the handles on the waveform to trim it down</b> to the ≤10s you want to keep —
             only the selection is uploaded. Preview the whole file or just your selection before you
             commit. Uploads are loudness-normalised so nothing is wildly louder than the rest.
@@ -107,6 +107,11 @@ export default function HelpModal({ onClose, isAdmin = false, voiceControl = fal
             </Section>
           )}
 
+          <Section icon="⏹" title="Stop playback">
+            <b>⏹ Stop</b> instantly halts all playback and clears the queue — anyone can hit it, and
+            everyone in the app sees a notice when you do.
+          </Section>
+
           <Section icon="♻" title="Bot laggy or stuck?">
             Hit <b>♻ Restart bot</b> (then confirm) to bounce it — it exits, comes straight back,
             and <b>rejoins the channel</b> it was in within a few seconds. Handy if playback gets
@@ -123,8 +128,6 @@ export default function HelpModal({ onClose, isAdmin = false, voiceControl = fal
           {isAdmin && (
             <Section icon="🛠" title="Admin">
               <b>⚙ Users</b> links each web account to their voice identity (so presence checks work).
-              <b> ⏹ Stop</b> instantly halts all playback and clears the queue — everyone sees a
-              notification when you do.
             </Section>
           )}
         </div>
