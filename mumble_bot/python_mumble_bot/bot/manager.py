@@ -4,6 +4,7 @@ import datetime as dt
 import json
 import logging
 import os
+import statistics
 import subprocess as sp
 import threading
 import time
@@ -13,6 +14,7 @@ from pathlib import Path
 
 import requests
 from pmb_core.audio import transform
+from pmb_core.audio.midi import parse_midi
 
 from python_mumble_bot.bot.constants import (
     BITRATE,
@@ -25,6 +27,7 @@ from python_mumble_bot.bot.event import (
     AudioEvent,
     ChannelTextEvent,
     ListMusicEvent,
+    MidiSongEvent,
     MusicEvent,
     RecordEvent,
     TextEvent,
@@ -69,6 +72,12 @@ class PlaybackManager(EventManager):
     # Keep pymumble's output buffer topped to ~this much. Small = snappy
     # interrupts/overlap; large enough to ride out the occasional scheduling gap.
     MIX_TARGET_SECS = 0.04
+
+    # MIDI-song ("jukebox") render: clamp pitch shift to ±2 octaves, floor each
+    # note so short notes still pop, and loudness-normalise the assembled mix.
+    SONG_MAX_SEMITONE_SHIFT = 24
+    SONG_MIN_NOTE_SECONDS = 0.08
+    SONG_LOUDNORM = "loudnorm=I=-16:TP=-1.5:LRA=11"
 
     def __init__(self, mumble, state_manager):
         self.mumble = mumble
@@ -176,6 +185,7 @@ class PlaybackManager(EventManager):
         return (
             isinstance(event, AudioEvent)
             or isinstance(event, MusicEvent)
+            or isinstance(event, MidiSongEvent)
             or isinstance(event, VocodeEvent)
         )
 
@@ -184,6 +194,8 @@ class PlaybackManager(EventManager):
             self._play_clips(event, self.RESAMPLE_FILTER)
         elif isinstance(event, VocodeEvent):
             self._process_vocode_event(event)
+        elif isinstance(event, MidiSongEvent):
+            self._play_midi_song(event)
         elif isinstance(event, MusicEvent):
             self._play_music(event)
 
@@ -243,6 +255,112 @@ class PlaybackManager(EventManager):
         # Replace this voice (interrupt/restart) for single web plays; append for
         # queues / legacy events so they stay sequential.
         self._submit_voice(key, segment, event.append)
+
+    def _play_midi_song(self, event):
+        """Render a MIDI song into one mono PCM buffer using a clip as the
+        instrument, then play it through the mixer.
+
+        Each note triggers the clip pitch-shifted to that note's pitch (relative
+        to the song's median, so shifts stay small), laid onto a silent canvas at
+        its onset and capped to its duration. Overlapping notes (chords) mix via
+        audioop.add. `max_seconds` (0 = full) caps the output length.
+        """
+        song_path = "audio/music/{0}".format(event.song_file)
+        file = self.state_manager.find_audio_clip(event.clip_ref)
+        try:
+            notes, _duration = parse_midi(song_path)
+        except Exception:
+            log.exception("song: failed to parse %s", song_path)
+            return
+        if not notes:
+            log.warning("song: %s has no notes", song_path)
+            return
+
+        sr = self.SAMPLE_RATE
+        bpf = 2  # mono 16-bit
+        speed = max(0.25, min(4.0, float(event.speed or 1.0)))
+        transpose = int(event.transpose or 0)
+        root = int(statistics.median(n.pitch for n in notes))
+        limit_bytes = int(max(0.0, event.max_seconds or 0.0) * sr) * bpf  # 0 = no limit
+        max_shift = self.SONG_MAX_SEMITONE_SHIFT
+
+        def shift_for(note):
+            return max(-max_shift, min(max_shift, note.pitch - root + transpose))
+
+        # Render each distinct pitch-shift once (reuses the PCM cache).
+        shift_pcm = {}
+        for n in notes:
+            if limit_bytes and int((n.start / speed) * sr) * bpf >= limit_bytes:
+                continue
+            shift = shift_for(n)
+            if shift not in shift_pcm:
+                pcm, _hit = self._get_pcm(
+                    event.clip_ref, file, self.RESAMPLE_FILTER, 1.0, 1.0, shift
+                )
+                shift_pcm[shift] = pcm
+
+        min_note_bytes = int(self.SONG_MIN_NOTE_SECONDS * sr) * bpf
+        placements = []
+        max_end = 0
+        for n in notes:
+            offset = int((n.start / speed) * sr) * bpf
+            if limit_bytes and offset >= limit_bytes:
+                continue
+            pcm = shift_pcm.get(shift_for(n)) or b""
+            if not pcm:
+                continue
+            cap = max(min_note_bytes, int((n.duration / speed) * sr) * bpf)
+            seg = pcm[:cap]
+            if limit_bytes:
+                seg = seg[:limit_bytes - offset]  # don't ring past the cap
+            if not seg:
+                continue
+            placements.append((offset, seg))
+            max_end = max(max_end, offset + len(seg))
+
+        if max_end == 0:
+            return
+
+        canvas = bytearray(max_end)
+        for offset, seg in placements:
+            region = bytes(canvas[offset:offset + len(seg)])
+            if len(region) < len(seg):
+                seg = seg[:len(region)]
+            if not seg:
+                continue
+            mixed = audioop.add(region, seg, 2)
+            canvas[offset:offset + len(mixed)] = mixed
+
+        gain_db = (self.state_manager.get_clip_gain_db(event.clip_ref) or 0) + (event.gain or 0)
+        volume = self.state_manager.get_volume() * transform.gain_db_to_multiplier(gain_db)
+        log.info(
+            "[song] %s on %s: %d notes, %d shifts, %.1fs",
+            event.song_file, event.clip_ref, len(notes), len(shift_pcm),
+            len(canvas) / (sr * bpf),
+        )
+        self._play_sound(self._finalize_song_pcm(bytes(canvas), volume))
+
+    def _finalize_song_pcm(self, pcm, volume):
+        """Loudness-normalise the assembled mono canvas, apply the overall
+        volume, and fade the last 30ms out (clean end, no click when the cap
+        truncates a sound). Falls back to a plain volume scale if ffmpeg fails."""
+        sr = self.SAMPLE_RATE
+        dur = len(pcm) / (sr * 2)
+        fade = min(0.03, dur)
+        audio_filter = "{0},volume={1},afade=t=out:st={2:.3f}:d={3:.3f}".format(
+            self.SONG_LOUDNORM, volume, max(0.0, dur - fade), fade
+        )
+        cmd = [
+            "ffmpeg", "-hide_banner", "-loglevel", "error",
+            "-f", "s16le", "-ar", str(sr), "-ac", "1", "-i", "pipe:0",
+            "-af", audio_filter,
+            "-f", "s16le", "-ar", str(sr), "-ac", "1", "pipe:1",
+        ]
+        proc = sp.run(cmd, input=pcm, stdout=sp.PIPE, stderr=sp.PIPE)
+        if proc.returncode == 0 and proc.stdout:
+            return proc.stdout
+        log.warning("song: finalize failed (%s), using raw mix", proc.stderr.decode()[:200])
+        return audioop.mul(pcm, 2, volume)
 
     def _play_music(self, event):
         piece = "audio/music/{0}".format(event.piece)
@@ -569,6 +687,22 @@ class CommandManager(EventManager):
                 )
             )
             os._exit(0)
+
+        if cmd_type == "play_song":
+            # A MIDI song played with a clip as the instrument. The announce is a
+            # separate command (see enqueue_song), so just render and play.
+            self.playback_manager.process(
+                MidiSongEvent(
+                    clip_ref=command["clip_ref"],
+                    song_file=command["song"],
+                    transpose=command.get("transpose", 0),
+                    speed=command.get("speed", 1.0),
+                    gain=command.get("gain", 0),
+                    max_seconds=command.get("max_seconds", 0),
+                    requested_by=command.get("requested_by"),
+                )
+            )
+            return
 
         speed = command.get("speed", 1.0)
         pitch = command.get("pitch", 0)
