@@ -66,6 +66,23 @@ _PREFIX_MAP = {
 }
 
 
+def _probe_duration(path: Path) -> float:
+    """Best-effort duration (seconds) of an on-disk audio file via ffprobe.
+    Returns 0.0 if it can't be read, so it never breaks upload/listing."""
+    try:
+        out = subprocess.run(
+            [
+                "ffprobe", "-v", "error", "-show_entries", "format=duration",
+                "-of", "default=noprint_wrappers=1:nokey=1", str(path),
+            ],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+        )
+        return round(float(out.stdout.decode().strip()), 2)
+    except Exception:
+        return 0.0
+
+
 def _read_duration(contents: bytes, ext: str) -> float:
     if ext == ".wav":
         try:
@@ -112,6 +129,21 @@ class ClipsService:
     def get_all_tags(self) -> List[str]:
         tags = self.db.clips.distinct("tags")
         return sorted(tags)
+
+    def backfill_durations(self) -> int:
+        """Probe and store duration_s for any clips missing it (one-off for
+        clips uploaded before duration tracking existed). Returns count updated."""
+        updated = 0
+        for clip in self.db.clips.find(
+            {"duration_s": {"$exists": False}}, {"identifier": 1, "file": 1, "_id": 0}
+        ):
+            path = AUDIO_DIR / clip["file"]
+            dur = _probe_duration(path) if path.exists() else 0.0
+            self.db.clips.update_one(
+                {"identifier": clip["identifier"]}, {"$set": {"duration_s": dur}}
+            )
+            updated += 1
+        return updated
 
     def upload_clip(
         self,
@@ -207,6 +239,10 @@ class ClipsService:
             "creation_time": datetime.utcnow(),
             "tags": tags,
             "uploaded_by": uploaded_by,
+            # Duration of the final stored (trimmed) clip — used for sorting and
+            # the duration buckets in the UI. Short clips render best as song
+            # instruments.
+            "duration_s": _probe_duration(dest),
         }
         self.db.clips.insert_one(doc)
         doc.pop("_id", None)
@@ -312,7 +348,11 @@ class ClipsService:
         os.replace(tmp, path)
 
         self.db.clips.update_one(
-            {"identifier": identifier}, {"$set": {"original_file": original_file}}
+            {"identifier": identifier},
+            {"$set": {
+                "original_file": original_file,
+                "duration_s": _probe_duration(path),
+            }},
         )
         return self.db.clips.find_one({"identifier": identifier}, {"_id": 0})
 
@@ -331,7 +371,11 @@ class ClipsService:
         if not backup.exists():
             raise HTTPException(404, "Original backup is missing")
 
-        shutil.copy2(backup, AUDIO_DIR / clip["file"])
+        dest = AUDIO_DIR / clip["file"]
+        shutil.copy2(backup, dest)
+        self.db.clips.update_one(
+            {"identifier": identifier}, {"$set": {"duration_s": _probe_duration(dest)}}
+        )
         return self.db.clips.find_one({"identifier": identifier}, {"_id": 0})
 
     def set_gain(self, identifier: str, gain_db: float) -> dict:

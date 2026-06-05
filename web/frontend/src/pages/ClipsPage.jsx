@@ -8,7 +8,8 @@ import UploadPanel from '../components/UploadPanel'
 import QueuePanel from '../components/QueuePanel'
 import SongCard from '../components/SongCard'
 import SongHistory from '../components/SongHistory'
-import PlaySongModal from '../components/PlaySongModal'
+import NowPlaying from '../components/NowPlaying'
+import SongInstrumentPanel from '../components/SongInstrumentPanel'
 import VoicePanel from '../components/VoicePanel'
 import PadBoard from '../components/PadBoard'
 import HelpModal from '../components/HelpModal'
@@ -61,6 +62,8 @@ export default function ClipsPage() {
   const [search, setSearch] = useState('')
   const [activeTag, setActiveTag] = useState(null)
   const [favouritesOnly, setFavouritesOnly] = useState(false)
+  // Duration bucket filter: null | 'short' (≤1s) | 'mid' (1–3s) | 'long' (3s+).
+  const [durationBucket, setDurationBucket] = useState(null)
   const [playingId, setPlayingId] = useState(null)
   // Set when a history entry is clicked, to push that play's pitch/speed onto
   // the matching clip card. `nonce` lets the same values re-apply on re-click.
@@ -80,8 +83,12 @@ export default function ClipsPage() {
   const [sidebarTab, setSidebarTab] = useState('history')
   const [songs, setSongs] = useState([])
   const [songHistory, setSongHistory] = useState([])
+  const [songState, setSongState] = useState({ current: null, queue: [] })
+  const [skipping, setSkipping] = useState(false)
   const [songUploadError, setSongUploadError] = useState(null)
-  const [playSongTarget, setPlaySongTarget] = useState(null)
+  // Active "pick an instrument for this song" flow. When set, the main view is
+  // the Clips screen (full search) and a picker panel shows in the sidebar.
+  const [songPick, setSongPick] = useState(null)
   const [queues, setQueues] = useState(loadQueues)
   const [activeQueueId, setActiveQueueId] = useState(() => localStorage.getItem('pmb_active_queue') || null)
   const [playingQueue, setPlayingQueue] = useState(false)
@@ -131,6 +138,22 @@ export default function ClipsPage() {
     api.get('/api/songs/history').then(res => setSongHistory(res.data)).catch(() => {})
   }, [])
 
+  const fetchSongState = useCallback(() => {
+    api.get('/api/songs/now-playing').then(res => setSongState(res.data)).catch(() => {})
+  }, [])
+
+  async function handleSkipSong() {
+    setSkipping(true)
+    try {
+      await api.post('/api/songs/skip')
+      setTimeout(fetchSongState, 400)
+    } catch (err) {
+      if (err.response?.status === 403) showActionToast(err.response.data?.detail || 'Not allowed')
+    } finally {
+      setSkipping(false)
+    }
+  }
+
   useEffect(() => {
     Promise.all([api.get('/api/clips/'), api.get('/api/clips/tags'), api.get('/api/users/me')])
       .then(([clipsRes, tagsRes, meRes]) => {
@@ -155,15 +178,17 @@ export default function ClipsPage() {
     fetchHistory()
     fetchSongs()
     fetchSongHistory()
+    fetchSongState()
   }, [])
 
   useEffect(() => {
     const id = setInterval(() => {
       fetchHistory()
       fetchSongHistory()
+      fetchSongState()
     }, 3000)
     return () => clearInterval(id)
-  }, [fetchHistory, fetchSongHistory])
+  }, [fetchHistory, fetchSongHistory, fetchSongState])
 
   useEffect(() => {
     if (queueCooldownUntil <= Date.now()) return
@@ -203,6 +228,13 @@ export default function ClipsPage() {
       .filter(clip => {
         if (favouritesOnly && !clip.is_favourite) return false
         if (activeTag && !clip.tags.includes(activeTag)) return false
+        if (durationBucket) {
+          const d = clip.duration_s
+          if (d == null) return false  // unknown duration: hidden while bucketing
+          if (durationBucket === 'short' && d > 1) return false
+          if (durationBucket === 'mid' && (d <= 1 || d > 3)) return false
+          if (durationBucket === 'long' && d <= 3) return false
+        }
         if (q && !clip.name.toLowerCase().includes(q) && !clip.identifier.toLowerCase().includes(q) && !clip.tags.some(t => t.toLowerCase().includes(q))) return false
         return true
       })
@@ -211,9 +243,12 @@ export default function ClipsPage() {
         if (sort === 'rot') return (a.score ?? 0) - (b.score ?? 0)
         if (sort === 'newest') return new Date(b.creation_time) - new Date(a.creation_time)
         if (sort === 'oldest') return new Date(a.creation_time) - new Date(b.creation_time)
+        // Unknown durations sort to the end either way.
+        if (sort === 'shortest') return (a.duration_s ?? Infinity) - (b.duration_s ?? Infinity)
+        if (sort === 'longest') return (b.duration_s ?? -1) - (a.duration_s ?? -1)
         return a.name.localeCompare(b.name)
       })
-  }, [clips, search, activeTag, favouritesOnly, sort])
+  }, [clips, search, activeTag, favouritesOnly, sort, durationBucket])
 
   const filteredSongs = useMemo(() => {
     const q = songSearch.trim().toLowerCase()
@@ -550,6 +585,36 @@ export default function ClipsPage() {
     }
   }
 
+  // Start the "pick an instrument" flow: jump to the Clips screen (full search)
+  // and open the instrument picker in the sidebar, seeded from `preset` if the
+  // play came from history.
+  function startSongPick(song, preset = null) {
+    setSongPick({
+      song,
+      clipRef: preset?.clip_ref || null,
+      clipName: preset?.clip_name || '',
+      transpose: preset?.transpose ?? 0,
+      speed: preset?.speed ?? 1.0,
+      gain: preset?.gain ?? 0,
+      maxSeconds: preset?.max_seconds ?? 10,
+    })
+    handleSetMainView('clips')
+    if (view === 'pads') handleSetView('grid')  // pads have no per-clip select button
+  }
+
+  async function playFromPick() {
+    if (!songPick?.clipRef || cooldownRemaining > 0) return
+    await doPlaySong(songPick.song.id, {
+      clip_ref: songPick.clipRef,
+      clip_name: songPick.clipName,
+      transpose: songPick.transpose,
+      speed: Math.round(songPick.speed * 100) / 100,
+      gain: songPick.gain,
+      max_seconds: songPick.maxSeconds,
+    })
+    setSongPick(null)
+  }
+
   async function doPlaySong(songId, opts) {
     if (cooldownRemaining > 0) return
     try {
@@ -557,6 +622,8 @@ export default function ClipsPage() {
       setQueueCooldownUntil(Date.now() + 10000)
       setTimeout(fetchHistory, 1500)
       setTimeout(fetchSongHistory, 1500)
+      setTimeout(fetchSongState, 400)
+      setTimeout(fetchSongState, 1200)
     } catch (err) {
       if (err.response?.status === 429) {
         const m = /(\d+)/.exec(err.response.data?.detail || '')
@@ -699,6 +766,8 @@ export default function ClipsPage() {
                 <option value="oldest">Date ↑</option>
                 <option value="top">★ Top</option>
                 <option value="rot">🥀 Rot</option>
+                <option value="shortest">⏱ Short</option>
+                <option value="longest">⏱ Long</option>
               </select>
               <div className={styles.viewToggle}>
                 <button className={`${styles.viewBtn} ${view === 'grid' ? styles.active : ''}`} onClick={() => handleSetView('grid')} title="Grid view">⊞ Grid</button>
@@ -708,8 +777,8 @@ export default function ClipsPage() {
             </div>
             <div className={styles.filters}>
               <button
-                className={`${styles.filterBtn} ${!activeTag && !favouritesOnly ? styles.active : ''}`}
-                onClick={() => { setActiveTag(null); setFavouritesOnly(false) }}
+                className={`${styles.filterBtn} ${!activeTag && !favouritesOnly && !durationBucket ? styles.active : ''}`}
+                onClick={() => { setActiveTag(null); setFavouritesOnly(false); setDurationBucket(null) }}
               >
                 All
               </button>
@@ -718,6 +787,27 @@ export default function ClipsPage() {
                 onClick={() => { setFavouritesOnly(f => !f); setActiveTag(null) }}
               >
                 ★ Favourites
+              </button>
+              <button
+                className={`${styles.filterBtn} ${durationBucket === 'short' ? styles.active : ''}`}
+                onClick={() => setDurationBucket(b => b === 'short' ? null : 'short')}
+                title="Clips ≤1s — best for songs"
+              >
+                ⏱ ≤1s
+              </button>
+              <button
+                className={`${styles.filterBtn} ${durationBucket === 'mid' ? styles.active : ''}`}
+                onClick={() => setDurationBucket(b => b === 'mid' ? null : 'mid')}
+                title="Clips 1–3s"
+              >
+                ⏱ 1–3s
+              </button>
+              <button
+                className={`${styles.filterBtn} ${durationBucket === 'long' ? styles.active : ''}`}
+                onClick={() => setDurationBucket(b => b === 'long' ? null : 'long')}
+                title="Clips longer than 3s"
+              >
+                ⏱ 3s+
               </button>
               {tags.length > 0 && (
                 <button
@@ -770,6 +860,9 @@ export default function ClipsPage() {
                       isAdmin={isAdmin}
                       view={view}
                       preset={historyPreset && historyPreset.ref === clip.identifier ? historyPreset : null}
+                      picking={!!songPick}
+                      selectedInstrument={songPick?.clipRef === clip.identifier}
+                      onSelectInstrument={(c) => setSongPick(p => ({ ...p, clipRef: c.identifier, clipName: c.name }))}
                     />
                   ))}
                 </div>
@@ -832,7 +925,7 @@ export default function ClipsPage() {
                       username={username}
                       isAdmin={isAdmin}
                       cooldownRemaining={cooldownRemaining}
-                      onPlay={(s, preset = null) => setPlaySongTarget({ song: s, preset })}
+                      onPlay={(s, preset = null) => startSongPick(s, preset)}
                       onRename={handleRenameSong}
                       onDelete={handleDeleteSong}
                     />
@@ -847,13 +940,28 @@ export default function ClipsPage() {
 
         <aside className={styles.sidebar}>
           {mainView === 'songs' ? (
-            <SongHistory
-              history={songHistory}
-              songs={songs}
-              onReplay={(song, preset) => setPlaySongTarget({ song, preset })}
-            />
+            <>
+              <NowPlaying state={songState} onSkip={handleSkipSong} skipping={skipping} />
+              <SongHistory
+                history={songHistory}
+                songs={songs}
+                onReplay={(song, preset) => startSongPick(song, preset)}
+              />
+            </>
           ) : (
           <>
+          {/* Also surface the song player here so a playing song / queue isn't
+              lost when the user is browsing clips. Renders nothing when idle. */}
+          <NowPlaying state={songState} onSkip={handleSkipSong} skipping={skipping} />
+          {songPick && (
+            <SongInstrumentPanel
+              pick={songPick}
+              onUpdate={(partial) => setSongPick(p => ({ ...p, ...partial }))}
+              onPlay={playFromPick}
+              onCancel={() => setSongPick(null)}
+              cooldownRemaining={cooldownRemaining}
+            />
+          )}
           <div className={styles.sidebarTabs}>
             <button
               className={`${styles.sidebarTab} ${sidebarTab === 'queue' ? styles.sidebarTabActive : ''}`}
@@ -925,15 +1033,6 @@ export default function ClipsPage() {
         </aside>
       </div>
       {actionToast && <div className={styles.actionToast}>{actionToast}</div>}
-      {playSongTarget && (
-        <PlaySongModal
-          song={playSongTarget.song}
-          preset={playSongTarget.preset}
-          clips={clips}
-          onClose={() => setPlaySongTarget(null)}
-          onPlay={doPlaySong}
-        />
-      )}
       {helpOpen && (
         <HelpModal
           onClose={() => setHelpOpen(false)}

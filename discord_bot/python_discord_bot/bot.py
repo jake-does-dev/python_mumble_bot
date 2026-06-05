@@ -66,6 +66,14 @@ class DiscordBot(commands.Bot):
         super().__init__(command_prefix="!pmb ", intents=intents)
         self.mongo = MongoInterface()
         self.players = {}
+        # Songs play one-at-a-time: a worker drains this pending list, and the
+        # current + upcoming state is mirrored to the `song_state` doc so the web
+        # can show a "now playing" mini-player. See _song_worker.
+        self._song_pending = []
+        self._song_current = None
+        self._song_signal = asyncio.Event()
+        self._skip_event = asyncio.Event()
+        self._song_worker_task = None
 
     async def setup_hook(self):
         await asyncio.to_thread(self.mongo.connect)
@@ -77,6 +85,9 @@ class DiscordBot(commands.Bot):
             await self.tree.sync(guild=guild)
         else:
             await self.tree.sync()
+        # Clear any stale "now playing" left over from a previous run.
+        await asyncio.to_thread(self._write_song_state)
+        self._song_worker_task = self.loop.create_task(self._song_worker())
         self.poll_commands.start()
         self.publish_voice_state.start()
 
@@ -351,6 +362,10 @@ class DiscordBot(commands.Bot):
             await self._publish_voice_state()
             return
         if cmd_type == "stop":
+            # Clear the song queue + current song too, then panic the mixer.
+            self._song_pending.clear()
+            self._skip_event.set()
+            await asyncio.to_thread(self._write_song_state)
             voice_client = self.active_voice_client()
             if voice_client is not None:
                 player = self.players.get(voice_client.guild.id)
@@ -359,7 +374,15 @@ class DiscordBot(commands.Bot):
             return
 
         if cmd_type == "play_song":
-            await self._play_song(command)
+            # Don't play inline (that would block the command loop); hand off to
+            # the song worker, which serialises playback one song at a time.
+            self._song_pending.append(command)
+            self._song_signal.set()
+            await asyncio.to_thread(self._write_song_state)
+            return
+
+        if cmd_type == "skip_song":
+            self._skip_event.set()
             return
 
         voice_client = self.active_voice_client()
@@ -411,11 +434,49 @@ class DiscordBot(commands.Bot):
             (time.monotonic() - t0) * 1000,
         )
 
-    async def _play_song(self, command):
-        """Play a MIDI song using a clip as the instrument (web-triggered)."""
+    def _write_song_state(self):
+        """Mirror the current song + upcoming queue to the `song_state` singleton
+        so the web can render the now-playing mini-player. Blocking (pymongo)."""
+        queue = [
+            {
+                "song_name": c.get("song_name") or c.get("song"),
+                "clip_name": c.get("clip_name") or c.get("clip_ref"),
+                "requested_by": c.get("requested_by"),
+            }
+            for c in self._song_pending
+        ]
+        self.mongo.db.song_state.replace_one(
+            {"_id": "singleton"},
+            {"_id": "singleton", "current": self._song_current, "queue": queue,
+             "updated_at": datetime.datetime.utcnow()},
+            upsert=True,
+        )
+
+    async def _song_worker(self):
+        """Play queued songs one at a time. Each waits for the previous to finish
+        (or be skipped) before starting."""
+        while True:
+            if not self._song_pending:
+                self._song_current = None
+                await asyncio.to_thread(self._write_song_state)
+                self._song_signal.clear()
+                await self._song_signal.wait()
+                continue
+            command = self._song_pending.pop(0)
+            try:
+                await self._play_one_song(command)
+            except Exception:
+                log.exception("song worker: failed to play %s", command.get("song"))
+            finally:
+                self._song_current = None
+                await asyncio.to_thread(self._write_song_state)
+
+    async def _play_one_song(self, command):
+        """Render one MIDI song with a clip as the instrument and play it to
+        completion (or until skipped)."""
         voice_client = self.active_voice_client()
         if voice_client is None:
-            log.warning("play_song: not in a voice channel; skipping")
+            log.warning("play_song: not in a voice channel; dropping %s", command.get("song"))
             return
         song_file = command.get("song")
         clip_ref = command.get("clip_ref")
@@ -432,23 +493,52 @@ class DiscordBot(commands.Bot):
         gain_db = float(command.get("gain", 0)) + float(doc.get("gain_db", 0))
         max_seconds = float(command.get("max_seconds", 0) or 0)
         base_volume = await asyncio.to_thread(self.mongo.get_volume)
-        # Announce is enqueued as its own command by the web (see enqueue_song),
-        # mirroring the queue path — so we don't announce again here.
 
         t0 = time.monotonic()
-        source = await asyncio.to_thread(
+        source, duration = await asyncio.to_thread(
             playback.build_song_source,
             doc["file"], song_file, transpose, speed, gain_db, base_volume, max_seconds,
         )
         log.info(
-            "[timing] song render %s on %s: %.0fms",
-            song_file, clip_ref, (time.monotonic() - t0) * 1000,
+            "[timing] song render %s on %s: %.0fms (%.1fs)",
+            song_file, clip_ref, (time.monotonic() - t0) * 1000, duration,
         )
         if source is None:
             log.warning("play_song: nothing to render for %s", song_file)
             return
+
+        song_name = command.get("song_name") or song_file
+        clip_name = command.get("clip_name") or clip_ref
+        requested_by = command.get("requested_by", "web")
+        self._song_current = {
+            "song_name": song_name,
+            "clip_name": clip_name,
+            "requested_by": requested_by,
+            "started_at": datetime.datetime.utcnow(),
+            "duration_s": round(duration, 2),
+        }
+        await asyncio.to_thread(self._write_song_state)
+
         player = self.get_player(voice_client)
-        player.play_now("__song__", source)
+        self._skip_event.clear()
+        done = asyncio.Event()
+        player.play_now("__song__", source, lambda: self.loop.call_soon_threadsafe(done.set))
+
+        # Wait for the song to finish naturally, be skipped, or a safety timeout.
+        skip_wait = asyncio.ensure_future(self._skip_event.wait())
+        done_wait = asyncio.ensure_future(done.wait())
+        try:
+            await asyncio.wait(
+                {skip_wait, done_wait}, timeout=duration + 5.0,
+                return_when=asyncio.FIRST_COMPLETED,
+            )
+        finally:
+            skip_wait.cancel()
+            done_wait.cancel()
+            if self._skip_event.is_set():
+                log.info("song skipped: %s", song_name)
+                player.stop_voice("__song__")
+                self._skip_event.clear()
 
 
 def register_commands(bot):

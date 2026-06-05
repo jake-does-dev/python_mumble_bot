@@ -143,7 +143,7 @@ class CommandsService:
         self.db.pending_commands.insert_many([
             {
                 "type": "announce",
-                "message": f"<b>{requested_by}</b> is playing 🎵 {song_name} on {clip_name}",
+                "message": f"<b>{requested_by}</b> queued 🎵 {song_name} on {clip_name}",
                 "status": "pending",
                 "created_at": now,
             },
@@ -162,6 +162,26 @@ class CommandsService:
                 "created_at": now + timedelta(microseconds=1),
             },
         ])
+
+    def enqueue_skip_song(self, requested_by: str) -> None:
+        self.db.pending_commands.insert_one(
+            {
+                "type": "skip_song",
+                "requested_by": requested_by,
+                "status": "pending",
+                "created_at": datetime.utcnow(),
+            }
+        )
+
+    def get_song_state(self) -> dict:
+        """Current song + upcoming queue, as mirrored by the bot."""
+        doc = self.db.song_state.find_one({"_id": "singleton"})
+        if not doc:
+            return {"current": None, "queue": []}
+        current = doc.get("current")
+        if current and current.get("started_at"):
+            current = {**current, "started_at": current["started_at"].isoformat() + "Z"}
+        return {"current": current, "queue": doc.get("queue", [])}
 
     def last_stop(self) -> dict:
         doc = self.db.pending_commands.find_one(

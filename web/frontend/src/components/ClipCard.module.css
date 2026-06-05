@@ -13,6 +13,35 @@
   box-shadow: var(--shadow);
 }
 
+.cardSelected {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
+}
+
+.useInstrument {
+  width: 100%;
+  padding: 6px 10px;
+  border: 1px solid var(--accent-border);
+  border-radius: 6px;
+  background: var(--accent-bg);
+  color: var(--accent);
+  font-size: 0.82rem;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+.useInstrument:hover {
+  background: var(--accent);
+  color: #fff;
+}
+
+.useInstrumentActive {
+  background: var(--accent);
+  color: #fff;
+}
+
 .cardList {
   flex-direction: row;
   align-items: center;
@@ -105,6 +134,11 @@
   color: var(--text);
   font-family: monospace;
   flex-shrink: 0;
+}
+
+.duration {
+  color: var(--accent);
+  font-weight: 600;
 }
 
 .tags {

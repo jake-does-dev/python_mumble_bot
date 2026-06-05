@@ -68,7 +68,8 @@ def _render_clip_pcm(clip_path, shift):
 
 def build_song_source(clip_file, song_file, transpose, speed, gain_db, base_volume, max_seconds=0):
     """Render a whole MIDI song into one stereo PCM source, using `clip_file` as
-    the instrument. Returns a discord.PCMAudio (or None if nothing to play).
+    the instrument. Returns (discord.PCMAudio, duration_seconds), or (None, 0.0)
+    if there's nothing to play. The duration lets the caller time the song queue.
 
     Each note triggers the clip pitch-shifted to that note's pitch (relative to
     the song's median pitch, so shifts stay small), laid onto a silent canvas at
@@ -83,7 +84,7 @@ def build_song_source(clip_file, song_file, transpose, speed, gain_db, base_volu
     clip_path = AUDIO_DIR.joinpath(clip_file)
     notes, _duration = parse_midi(str(song_path))
     if not notes:
-        return None
+        return None, 0.0
 
     speed = max(0.25, min(4.0, float(speed or 1.0)))
     transpose = int(transpose or 0)
@@ -122,10 +123,10 @@ def build_song_source(clip_file, song_file, transpose, speed, gain_db, base_volu
         max_end = max(max_end, offset + len(seg))
 
     if max_end == 0:
-        return None
+        return None, 0.0
 
     canvas = bytearray(max_end)
-    for offset, seg in placements:
+    for i, (offset, seg) in enumerate(placements):
         region = bytes(canvas[offset:offset + len(seg)])
         if len(region) < len(seg):
             seg = seg[:len(region)]
@@ -133,13 +134,20 @@ def build_song_source(clip_file, song_file, transpose, speed, gain_db, base_volu
             continue
         mixed = audioop.add(region, seg, 2)
         canvas[offset:offset + len(mixed)] = mixed
+        # audioop holds the GIL; without periodic yields this tight mix loop
+        # starves discord.py's realtime audio thread (20ms/frame) and the
+        # gateway heartbeat → stutter. Sleep briefly every few notes so they
+        # always get a slice. (This runs in a worker thread, not the loop.)
+        if i % 8 == 7:
+            time.sleep(0.001)
 
     pcm_out = _finalize_song(bytes(canvas), base_volume * transform.gain_db_to_multiplier(gain_db))
 
     # discord.PCMAudio drops a trailing partial frame, so pad to a frame boundary.
     if len(pcm_out) % FRAME_BYTES:
         pcm_out += b"\x00" * (FRAME_BYTES - len(pcm_out) % FRAME_BYTES)
-    return discord.PCMAudio(io.BytesIO(pcm_out))
+    duration_s = len(pcm_out) / (SR * BYTES_PER_FRAME)
+    return discord.PCMAudio(io.BytesIO(pcm_out)), duration_s
 
 
 def _finalize_song(pcm, volume):
@@ -188,6 +196,17 @@ class _MixerStream(discord.AudioSource):
                 old[0].cleanup()
             if old[1] is not None:
                 old[1]()  # unblock whoever was waiting on the replaced voice
+
+    def drop_voice(self, key):
+        """Stop and remove a single voice (e.g. skip the song), firing its
+        on_done so anyone awaiting it is unblocked."""
+        with self._lock:
+            old = self._voices.pop(key, None)
+        if old is not None:
+            if old[0] is not None:
+                old[0].cleanup()
+            if old[1] is not None:
+                old[1]()
 
     def read(self):
         with self._lock:
@@ -276,12 +295,17 @@ class GuildPlayer:
         self._mixer.clear()
         log.info("Panic: cleared playback (%d queued dropped)", drained)
 
-    def play_now(self, voice_key, source):
+    def play_now(self, voice_key, source, on_done=None):
         """Play a single clip on this user's voice — overlaps other users,
-        restarts if they were already playing something."""
+        restarts if they were already playing something. `on_done` (if given)
+        fires when the source ends, is replaced, or is dropped."""
         self._begin_stream()
         self._log_start(time.monotonic())
-        self._mixer.set_voice(voice_key, source, None)
+        self._mixer.set_voice(voice_key, source, on_done)
+
+    def stop_voice(self, voice_key):
+        """Stop a single voice immediately (used to skip the current song)."""
+        self._mixer.drop_voice(voice_key)
 
     async def enqueue(self, source):
         """Queue a clip on the shared sequential queue voice."""
