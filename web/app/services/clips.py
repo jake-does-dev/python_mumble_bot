@@ -18,11 +18,11 @@ AUDIO_DIR = Path(os.getenv("AUDIO_DIR", "/app/audio"))
 # Pitch/speed-shifted preview renders are cached here. /tmp is ephemeral, so it
 # self-cleans on container restart and never touches the real audio volume.
 PREVIEW_CACHE_DIR = Path("/tmp/pmb_preview_cache")
-MAX_SIZE_BYTES = 50 * 1024 * 1024  # 50 MB
+MAX_SIZE_BYTES = 100 * 1024 * 1024  # 100 MB (headroom for a 5-min WAV source)
 MAX_DURATION_SECONDS = 10
 # A longer source may be uploaded so it can be trimmed down in the browser; the
 # stored result (the trimmed selection) must still be <= MAX_DURATION_SECONDS.
-MAX_SOURCE_DURATION_SECONDS = 60
+MAX_SOURCE_DURATION_SECONDS = 300  # 5 min
 _NAME_RE = re.compile(r"^[a-zA-Z0-9_\-]+$")
 
 # "prefix" (default) keeps the Mumble-style prefixed IDs (oy69, ja12, ...).

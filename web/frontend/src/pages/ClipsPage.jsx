@@ -158,9 +158,12 @@ export default function ClipsPage() {
   }, [])
 
   useEffect(() => {
-    const id = setInterval(fetchHistory, 3000)
+    const id = setInterval(() => {
+      fetchHistory()
+      fetchSongHistory()
+    }, 3000)
     return () => clearInterval(id)
-  }, [fetchHistory])
+  }, [fetchHistory, fetchSongHistory])
 
   useEffect(() => {
     if (queueCooldownUntil <= Date.now()) return

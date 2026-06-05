@@ -82,7 +82,7 @@ export default function HelpModal({ onClose, isAdmin = false, voiceControl = fal
           </Section>
 
           <Section icon="↑" title="Uploading">
-            Use <b>↑ Upload</b> to add a clip (.wav / .mp3). You can drop in a file up to <b>60s</b>
+            Use <b>↑ Upload</b> to add a clip (.wav / .mp3). You can drop in a file up to <b>5 min</b>
             and <b>drag the handles on the waveform to trim it down</b> to the ≤10s you want to keep —
             only the selection is uploaded. Preview the whole file or just your selection before you
             commit. Uploads are loudness-normalised so nothing is wildly louder than the rest.
