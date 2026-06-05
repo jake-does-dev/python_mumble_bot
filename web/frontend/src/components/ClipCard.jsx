@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from 'react'
 import api from '../api'
 import TrimModal from './TrimModal'
+import GenerateQueueModal from './GenerateQueueModal'
 import {
   PITCH_MIN,
   PITCH_MAX,
@@ -18,7 +19,7 @@ function formatDate(iso) {
   return new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
 }
 
-export default function ClipCard({ clip, onToggleFavourite, onPlay, onDelete, onAddToQueue, onEdit, onVote, onTrimmed, onGain, username = null, playing, isAdmin = false, view = 'grid', preset = null }) {
+export default function ClipCard({ clip, onToggleFavourite, onPlay, onDelete, onAddToQueue, onGenerateQueue, onEdit, onVote, onTrimmed, onGain, username = null, playing, isAdmin = false, view = 'grid', preset = null }) {
   const [pitch, setPitch] = useState(() => loadSetting(clip.identifier, 'pitch', 0))
   const [speed, setSpeed] = useState(() => loadSetting(clip.identifier, 'speed', 1))
   const [confirmDelete, setConfirmDelete] = useState(false)
@@ -28,6 +29,7 @@ export default function ClipCard({ clip, onToggleFavourite, onPlay, onDelete, on
   const [editError, setEditError] = useState(null)
   const [previewing, setPreviewing] = useState(false)
   const [trimming, setTrimming] = useState(false)
+  const [generating, setGenerating] = useState(false)
   const [downloading, setDownloading] = useState(false)
   const [gainDb, setGainDb] = useState(clip.gain_db ?? 0)
   const [gainSaving, setGainSaving] = useState(false)
@@ -319,6 +321,11 @@ export default function ClipCard({ clip, onToggleFavourite, onPlay, onDelete, on
           title="Download this clip"
         >{downloading ? '…' : '⬇'}</button>
         <button
+          className={styles.generate}
+          onClick={() => setGenerating(true)}
+          title="Generate a randomised pitch/speed queue from this clip"
+        >🎲</button>
+        <button
           className={`${styles.star} ${clip.is_favourite ? styles.starred : ''}`}
           onClick={() => onToggleFavourite(clip.identifier)}
           title={clip.is_favourite ? 'Remove favourite' : 'Add favourite'}
@@ -354,6 +361,14 @@ export default function ClipCard({ clip, onToggleFavourite, onPlay, onDelete, on
             setPreviewing(false)
             if (onTrimmed) onTrimmed(clip.identifier, updated)
           }}
+        />
+      )}
+
+      {generating && (
+        <GenerateQueueModal
+          clip={clip}
+          onClose={() => setGenerating(false)}
+          onGenerate={(opts) => onGenerateQueue(clip.identifier, clip.name, opts)}
         />
       )}
     </div>

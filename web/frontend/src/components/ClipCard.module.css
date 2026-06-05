@@ -49,8 +49,11 @@
 }
 
 .cardList .actions {
-  display: flex;
-  justify-content: flex-end;
+  display: grid;
+  grid-template-columns: repeat(4, auto);
+  gap: 0.4rem;
+  justify-content: end;
+  align-content: center;
   margin-top: 0;
   flex-shrink: 0;
 }
@@ -173,6 +176,7 @@
 .reset,
 .play,
 .download,
+.generate,
 .edit {
   border: 1px solid var(--border);
   border-radius: 6px;
@@ -184,7 +188,8 @@
   transition: background 0.15s, border-color 0.15s;
 }
 
-.download:hover:not(:disabled) {
+.download:hover:not(:disabled),
+.generate:hover {
   background: var(--accent-bg);
   border-color: var(--accent-border);
   color: var(--accent);

@@ -413,6 +413,22 @@ export default function ClipsPage() {
     }))
   }
 
+  function handleGenerateQueue(identifier, name, { minPitch, maxPitch, minSpeed, maxSpeed, count }) {
+    const randInt = (a, b) => Math.floor(Math.random() * (b - a + 1)) + a
+    const randSpeed = (a, b) => Math.round((a + Math.random() * (b - a)) * 100) / 100
+    const items = Array.from({ length: count }, () => ({
+      id: newId(),
+      identifier,
+      name,
+      pitch: randInt(minPitch, maxPitch),
+      speed: randSpeed(minSpeed, maxSpeed),
+    }))
+    const q = { id: newId(), name: `${name} ×${count}`, items }
+    saveQueues([...queues, q])
+    selectQueue(q.id)
+    setSidebarTab('queue')
+  }
+
   function handleReorderInQueue(queueId, fromIndex, toIndex) {
     saveQueues(queues.map(q => {
       if (q.id !== queueId) return q
@@ -635,6 +651,7 @@ export default function ClipsPage() {
                       onPlay={handlePlay}
                       onDelete={handleDelete}
                       onAddToQueue={handleAddToQueue}
+                      onGenerateQueue={handleGenerateQueue}
                       onEdit={handleEdit}
                       onVote={handleVote}
                       onTrimmed={handleTrimmed}
