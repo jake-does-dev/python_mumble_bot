@@ -22,6 +22,9 @@ SONGS_DIR = AUDIO_DIR / "music"
 SILENCE_FRAME = b"\x00" * 3840
 FRAME_BYTES = 3840
 
+# Mixer voice key for sequential queue playback (one shared lane, plays in order).
+QUEUE_VOICE = "__queue__"
+
 # Song render constants. Discord wants 48kHz 16-bit STEREO (4 bytes/frame).
 SR = 48000
 BYTES_PER_FRAME = 4  # 2 channels * 2 bytes
