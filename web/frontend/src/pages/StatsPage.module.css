@@ -82,9 +82,45 @@
 
 .periodBar {
   display: flex;
-  gap: 2px;
+  gap: 0.75rem;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
   margin-bottom: 1.25rem;
   flex-shrink: 0;
+}
+
+.modeTabs {
+  display: flex;
+  gap: 0.4rem;
+}
+
+.periodGroup {
+  display: flex;
+  gap: 2px;
+}
+
+.modeBtn {
+  padding: 5px 14px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text);
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+
+.modeBtn:hover {
+  border-color: var(--accent-border);
+  color: var(--text-h);
+}
+
+.modeBtn.active {
+  background: var(--accent-bg);
+  border-color: var(--accent-border);
+  color: var(--accent);
 }
 
 .periodBtn {
