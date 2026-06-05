@@ -6,7 +6,8 @@ import api from '../api'
 import ClipCard from '../components/ClipCard'
 import UploadPanel from '../components/UploadPanel'
 import QueuePanel from '../components/QueuePanel'
-import SongsPanel from '../components/SongsPanel'
+import SongCard from '../components/SongCard'
+import SongHistory from '../components/SongHistory'
 import PlaySongModal from '../components/PlaySongModal'
 import VoicePanel from '../components/VoicePanel'
 import PadBoard from '../components/PadBoard'
@@ -66,6 +67,10 @@ export default function ClipsPage() {
   const [historyPreset, setHistoryPreset] = useState(null)
   const [view, setView] = useState(() => localStorage.getItem('pmb_view') || 'grid')
   const [sort, setSort] = useState(() => localStorage.getItem('pmb_sort') || 'alpha')
+  // Top-level main view: clips vs songs.
+  const [mainView, setMainView] = useState(() => localStorage.getItem('pmb_main_view') || 'clips')
+  const [songView, setSongView] = useState(() => localStorage.getItem('pmb_song_view') || 'grid')
+  const [songSearch, setSongSearch] = useState('')
   const [uploadOpen, setUploadOpen] = useState(false)
   const [dragActive, setDragActive] = useState(false)  // file dragged over window
   const [droppedFile, setDroppedFile] = useState(null)
@@ -81,9 +86,21 @@ export default function ClipsPage() {
   const [activeQueueId, setActiveQueueId] = useState(() => localStorage.getItem('pmb_active_queue') || null)
   const [playingQueue, setPlayingQueue] = useState(false)
 
+  const songFileRef = useRef(null)
+
   function handleSetView(v) {
     setView(v)
     localStorage.setItem('pmb_view', v)
+  }
+
+  function handleSetMainView(v) {
+    setMainView(v)
+    localStorage.setItem('pmb_main_view', v)
+  }
+
+  function handleSetSongView(v) {
+    setSongView(v)
+    localStorage.setItem('pmb_song_view', v)
   }
 
   function handleSetSort(v) {
@@ -194,6 +211,12 @@ export default function ClipsPage() {
         return a.name.localeCompare(b.name)
       })
   }, [clips, search, activeTag, favouritesOnly, sort])
+
+  const filteredSongs = useMemo(() => {
+    const q = songSearch.trim().toLowerCase()
+    const list = q ? songs.filter(s => s.name.toLowerCase().includes(q)) : songs
+    return [...list].sort((a, b) => a.name.localeCompare(b.name))
+  }, [songs, songSearch])
 
   function handleToggleFavourite(identifier) {
     setClips(prev =>
@@ -576,13 +599,15 @@ export default function ClipsPage() {
 
           <span className={styles.headerDivider} />
 
-          <button
-            className={`${styles.statsLink} ${uploadOpen ? styles.active : ''}`}
-            onClick={() => setUploadOpen(o => !o)}
-            title="Upload a clip"
-          >
-            ↑ Upload
-          </button>
+          {mainView === 'clips' && (
+            <button
+              className={`${styles.statsLink} ${uploadOpen ? styles.active : ''}`}
+              onClick={() => setUploadOpen(o => !o)}
+              title="Upload a clip"
+            >
+              ↑ Upload
+            </button>
+          )}
           <button
             className={styles.stopBtn}
             onClick={handleStop}
@@ -619,6 +644,23 @@ export default function ClipsPage() {
 
       <div className={styles.layout}>
         <div className={styles.main}>
+          <div className={styles.mainTabs}>
+            <button
+              className={`${styles.mainTab} ${mainView === 'clips' ? styles.mainTabActive : ''}`}
+              onClick={() => handleSetMainView('clips')}
+            >
+              🔊 Clips{clips.length > 0 ? ` (${clips.length})` : ''}
+            </button>
+            <button
+              className={`${styles.mainTab} ${mainView === 'songs' ? styles.mainTabActive : ''}`}
+              onClick={() => handleSetMainView('songs')}
+            >
+              🎵 Songs{songs.length > 0 ? ` (${songs.length})` : ''}
+            </button>
+          </div>
+
+          {mainView === 'clips' ? (
+          <>
           <div className={styles.controls}>
             {uploadOpen && (
               <UploadPanel
@@ -731,9 +773,84 @@ export default function ClipsPage() {
               </>
             )}
           </div>
+          </>
+          ) : (
+          <>
+          <div className={styles.controls}>
+            <div className={styles.controlsTop}>
+              <div className={styles.searchWrap}>
+                <input
+                  className={styles.search}
+                  type="search"
+                  placeholder="Search songs…"
+                  value={songSearch}
+                  onChange={e => setSongSearch(e.target.value)}
+                />
+                {songSearch && (
+                  <button className={styles.searchClear} onClick={() => setSongSearch('')} title="Clear search">✕</button>
+                )}
+              </div>
+              <button
+                className={styles.sortSelect}
+                onClick={() => songFileRef.current?.click()}
+                title="Upload a MIDI song"
+              >
+                ↑ Upload .mid
+              </button>
+              <input
+                ref={songFileRef}
+                type="file"
+                accept=".mid,.midi,audio/midi"
+                style={{ display: 'none' }}
+                onChange={e => { const f = e.target.files?.[0]; if (f) handleUploadSong(f); e.target.value = '' }}
+              />
+              <div className={styles.viewToggle}>
+                <button className={`${styles.viewBtn} ${songView === 'grid' ? styles.active : ''}`} onClick={() => handleSetSongView('grid')} title="Grid view">⊞ Grid</button>
+                <button className={`${styles.viewBtn} ${songView === 'list' ? styles.active : ''}`} onClick={() => handleSetSongView('list')} title="List view">☰ List</button>
+              </div>
+            </div>
+            {songUploadError && <p className={styles.error}>{songUploadError}</p>}
+          </div>
+
+          <div className={styles.clipsScroll}>
+            {songs.length === 0 ? (
+              <p className={styles.status}>No songs yet — upload a .mid to start.</p>
+            ) : filteredSongs.length === 0 ? (
+              <p className={styles.status}>No songs match “{songSearch}”.</p>
+            ) : (
+              <>
+                <p className={styles.count}>{filteredSongs.length} song{filteredSongs.length !== 1 ? 's' : ''}</p>
+                <div className={songView === 'grid' ? styles.grid : styles.list}>
+                  {filteredSongs.map(song => (
+                    <SongCard
+                      key={song.id}
+                      song={song}
+                      view={songView}
+                      username={username}
+                      isAdmin={isAdmin}
+                      cooldownRemaining={cooldownRemaining}
+                      onPlay={(s, preset = null) => setPlaySongTarget({ song: s, preset })}
+                      onRename={handleRenameSong}
+                      onDelete={handleDeleteSong}
+                    />
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
+          </>
+          )}
         </div>
 
         <aside className={styles.sidebar}>
+          {mainView === 'songs' ? (
+            <SongHistory
+              history={songHistory}
+              songs={songs}
+              onReplay={(song, preset) => setPlaySongTarget({ song, preset })}
+            />
+          ) : (
+          <>
           <div className={styles.sidebarTabs}>
             <button
               className={`${styles.sidebarTab} ${sidebarTab === 'queue' ? styles.sidebarTabActive : ''}`}
@@ -744,12 +861,6 @@ export default function ClipsPage() {
                 : ''}
             </button>
             <button
-              className={`${styles.sidebarTab} ${sidebarTab === 'songs' ? styles.sidebarTabActive : ''}`}
-              onClick={() => setSidebarTab('songs')}
-            >
-              🎵 Songs{songs.length > 0 ? ` (${songs.length})` : ''}
-            </button>
-            <button
               className={`${styles.sidebarTab} ${sidebarTab === 'history' ? styles.sidebarTabActive : ''}`}
               onClick={() => setSidebarTab('history')}
             >
@@ -757,21 +868,7 @@ export default function ClipsPage() {
             </button>
           </div>
 
-          {sidebarTab === 'songs' ? (
-            <SongsPanel
-              songs={songs}
-              clips={clips}
-              username={username}
-              isAdmin={isAdmin}
-              history={songHistory}
-              onUpload={handleUploadSong}
-              onDelete={handleDeleteSong}
-              onRename={handleRenameSong}
-              onPlay={(song, preset = null) => setPlaySongTarget({ song, preset })}
-              cooldownRemaining={cooldownRemaining}
-              uploadError={songUploadError}
-            />
-          ) : sidebarTab === 'queue' ? (
+          {sidebarTab === 'queue' ? (
             <QueuePanel
               queues={queues}
               activeQueueId={activeQueueId}
@@ -819,6 +916,8 @@ export default function ClipsPage() {
                 )
               }
             </>
+          )}
+          </>
           )}
         </aside>
       </div>
