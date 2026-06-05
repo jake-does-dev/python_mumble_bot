@@ -7,7 +7,7 @@ name = "pmb-core"
 version = "0.1.0"
 description = "Shared core for the Mumble and Discord voice-clip bots: MongoDB interface and ffmpeg audio transform."
 requires-python = ">=3.10"
-dependencies = ["pymongo"]
+dependencies = ["pymongo", "mido"]
 
 [tool.setuptools]
 packages = ["pmb_core", "pmb_core.db", "pmb_core.audio"]

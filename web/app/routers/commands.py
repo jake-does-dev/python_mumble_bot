@@ -8,7 +8,6 @@ from app.auth import get_current_user
 from app.services.clips import ClipsService
 from app.services.commands import CommandsService
 from app.services.presence import enforce_presence
-from app.services.users import UsersService
 
 router = APIRouter(prefix="/api/commands", tags=["commands"])
 
@@ -93,9 +92,9 @@ def last_stop(current_user: str = Depends(get_current_user)):
 
 @router.post("/stop")
 def stop_playback(current_user: str = Depends(get_current_user)):
-    # Emergency stop is admin-only.
-    if not UsersService().is_admin(current_user):
-        raise HTTPException(status_code=403, detail="Admin access required")
+    # Emergency stop is available to everyone (gated on presence like play/queue,
+    # so it's a no-op restriction unless PLAY_REQUIRES_PRESENCE is enabled).
+    enforce_presence(current_user, "stop")
     CommandsService().enqueue_stop(requested_by=current_user)
     return {"message": "Playback stopped"}
 

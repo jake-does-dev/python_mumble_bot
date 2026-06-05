@@ -7,7 +7,7 @@ from fastapi.responses import FileResponse
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from app.limiter import limiter
-from app.routers import clips, commands, stats, users, voice
+from app.routers import clips, commands, songs, stats, users, voice
 from app.database import get_db
 
 PENDING_COMMANDS_TTL_SECONDS = 30 * 24 * 60 * 60  # 30 days
@@ -22,6 +22,8 @@ def create_indexes():
     db.pending_commands.create_index("created_at", expireAfterSeconds=PENDING_COMMANDS_TTL_SECONDS)
     # play_log is the durable, append-only stats source (no TTL).
     db.play_log.create_index("played_at")
+    # song_log: durable record of MIDI-song plays (separate from play_log).
+    db.song_log.create_index("played_at")
     _backfill_play_log(db)
 
 
@@ -59,6 +61,7 @@ app.add_middleware(
 app.include_router(users.router)
 app.include_router(clips.router)
 app.include_router(commands.router)
+app.include_router(songs.router)
 app.include_router(stats.router)
 app.include_router(voice.router)
 

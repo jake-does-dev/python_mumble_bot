@@ -6,6 +6,8 @@ import api from '../api'
 import ClipCard from '../components/ClipCard'
 import UploadPanel from '../components/UploadPanel'
 import QueuePanel from '../components/QueuePanel'
+import SongsPanel from '../components/SongsPanel'
+import PlaySongModal from '../components/PlaySongModal'
 import VoicePanel from '../components/VoicePanel'
 import PadBoard from '../components/PadBoard'
 import HelpModal from '../components/HelpModal'
@@ -71,6 +73,10 @@ export default function ClipsPage() {
   const [tagsExpanded, setTagsExpanded] = useState(() => localStorage.getItem('pmb_tags_expanded') !== 'false')
 
   const [sidebarTab, setSidebarTab] = useState('history')
+  const [songs, setSongs] = useState([])
+  const [songHistory, setSongHistory] = useState([])
+  const [songUploadError, setSongUploadError] = useState(null)
+  const [playSongTarget, setPlaySongTarget] = useState(null)
   const [queues, setQueues] = useState(loadQueues)
   const [activeQueueId, setActiveQueueId] = useState(() => localStorage.getItem('pmb_active_queue') || null)
   const [playingQueue, setPlayingQueue] = useState(false)
@@ -100,6 +106,14 @@ export default function ClipsPage() {
     api.get('/api/commands/history').then(res => setHistory(res.data)).catch(() => {})
   }, [])
 
+  const fetchSongs = useCallback(() => {
+    api.get('/api/songs/').then(res => setSongs(res.data)).catch(() => {})
+  }, [])
+
+  const fetchSongHistory = useCallback(() => {
+    api.get('/api/songs/history').then(res => setSongHistory(res.data)).catch(() => {})
+  }, [])
+
   useEffect(() => {
     Promise.all([api.get('/api/clips/'), api.get('/api/clips/tags'), api.get('/api/users/me')])
       .then(([clipsRes, tagsRes, meRes]) => {
@@ -122,6 +136,8 @@ export default function ClipsPage() {
       .finally(() => setLoading(false))
 
     fetchHistory()
+    fetchSongs()
+    fetchSongHistory()
   }, [])
 
   useEffect(() => {
@@ -478,6 +494,56 @@ export default function ClipsPage() {
     }
   }
 
+  async function handleUploadSong(file) {
+    setSongUploadError(null)
+    const formData = new FormData()
+    formData.append('file', file)
+    try {
+      await api.post('/api/songs/upload', formData)
+      fetchSongs()
+    } catch (err) {
+      setSongUploadError(err.response?.data?.detail || 'Upload failed')
+    }
+  }
+
+  async function handleDeleteSong(songId) {
+    try {
+      await api.delete(`/api/songs/${songId}`)
+      fetchSongs()
+    } catch (err) {
+      showActionToast(err.response?.data?.detail || 'Delete failed')
+    }
+  }
+
+  async function handleRenameSong(songId, name) {
+    try {
+      await api.patch(`/api/songs/${songId}`, { name })
+      fetchSongs()
+    } catch (err) {
+      showActionToast(err.response?.data?.detail || 'Rename failed')
+    }
+  }
+
+  async function doPlaySong(songId, opts) {
+    if (cooldownRemaining > 0) return
+    try {
+      await api.post(`/api/songs/${songId}/play`, opts)
+      setQueueCooldownUntil(Date.now() + 10000)
+      setTimeout(fetchHistory, 1500)
+      setTimeout(fetchSongHistory, 1500)
+    } catch (err) {
+      if (err.response?.status === 429) {
+        const m = /(\d+)/.exec(err.response.data?.detail || '')
+        const secs = m ? Number(m[1]) : 10
+        setQueueCooldownUntil(Date.now() + secs * 1000)
+      } else if (err.response?.status === 403) {
+        showActionToast(err.response.data?.detail || 'Not allowed to play right now')
+      } else {
+        showActionToast(err.response?.data?.detail || 'Failed to play song')
+      }
+    }
+  }
+
   function handleLogout() {
     logout()
     navigate('/login')
@@ -517,15 +583,13 @@ export default function ClipsPage() {
           >
             ↑ Upload
           </button>
-          {isAdmin && (
-            <button
-              className={styles.stopBtn}
-              onClick={handleStop}
-              title="Stop all playback now (admin)"
-            >
-              ⏹ Stop
-            </button>
-          )}
+          <button
+            className={styles.stopBtn}
+            onClick={handleStop}
+            title="Stop all playback now"
+          >
+            ⏹ Stop
+          </button>
           {confirmRestart ? (
             <span className={styles.restartConfirm}>
               <button className={styles.restartBtn} onClick={handleRestart} title="Confirm restart">♻ Confirm?</button>
@@ -680,6 +744,12 @@ export default function ClipsPage() {
                 : ''}
             </button>
             <button
+              className={`${styles.sidebarTab} ${sidebarTab === 'songs' ? styles.sidebarTabActive : ''}`}
+              onClick={() => setSidebarTab('songs')}
+            >
+              🎵 Songs{songs.length > 0 ? ` (${songs.length})` : ''}
+            </button>
+            <button
               className={`${styles.sidebarTab} ${sidebarTab === 'history' ? styles.sidebarTabActive : ''}`}
               onClick={() => setSidebarTab('history')}
             >
@@ -687,7 +757,21 @@ export default function ClipsPage() {
             </button>
           </div>
 
-          {sidebarTab === 'queue' ? (
+          {sidebarTab === 'songs' ? (
+            <SongsPanel
+              songs={songs}
+              clips={clips}
+              username={username}
+              isAdmin={isAdmin}
+              history={songHistory}
+              onUpload={handleUploadSong}
+              onDelete={handleDeleteSong}
+              onRename={handleRenameSong}
+              onPlay={(song, preset = null) => setPlaySongTarget({ song, preset })}
+              cooldownRemaining={cooldownRemaining}
+              uploadError={songUploadError}
+            />
+          ) : sidebarTab === 'queue' ? (
             <QueuePanel
               queues={queues}
               activeQueueId={activeQueueId}
@@ -739,6 +823,15 @@ export default function ClipsPage() {
         </aside>
       </div>
       {actionToast && <div className={styles.actionToast}>{actionToast}</div>}
+      {playSongTarget && (
+        <PlaySongModal
+          song={playSongTarget.song}
+          preset={playSongTarget.preset}
+          clips={clips}
+          onClose={() => setPlaySongTarget(null)}
+          onPlay={doPlaySong}
+        />
+      )}
       {helpOpen && (
         <HelpModal
           onClose={() => setHelpOpen(false)}
