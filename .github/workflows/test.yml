@@ -1,10 +1,18 @@
 name: Test
 
 on:
+  # PRs are covered by pull_request; only run push on the default branch (the
+  # merge result) and on tags. This stops a PR branch firing BOTH push and
+  # pull_request for the same commit — the duplicate runs.
   pull_request: {}
   push:
-    branches: "*"
-    tags: "*"
+    branches: [master]
+    tags: ["*"]
+
+# A new commit on a branch/PR cancels the still-running checks for the old one.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   pmb_core:
