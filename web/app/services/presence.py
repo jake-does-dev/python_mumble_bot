@@ -18,6 +18,11 @@ _NOT_LINKED = (
 )
 _NOT_PRESENT = "You must be in the voice channel to do that."
 _NOT_IN_TARGET = "You can only summon the bot to a channel you're in."
+_MUTED = "Unmute your mic and turn your audio on (undeafen) to play."
+
+# Actions that make the bot produce sound on your behalf require both your mic
+# and your audio to be on — no playing while muted or deafened.
+_REQUIRES_AUDIO_ON = {"play", "queue", "song"}
 
 
 def _voice_state() -> dict:
@@ -55,6 +60,11 @@ def enforce_presence(current_user: str, action: str, channel_id: str = None) -> 
             raise HTTPException(status_code=403, detail=_NOT_IN_TARGET)
         return
 
-    present_ids = {m.get("id") for m in state.get("present", [])}
-    if voice_id not in present_ids:
+    present = {m.get("id"): m for m in state.get("present", [])}
+    if voice_id not in present:
         raise HTTPException(status_code=403, detail=_NOT_PRESENT)
+
+    if action in _REQUIRES_AUDIO_ON:
+        me = present[voice_id]
+        if me.get("mute") or me.get("deaf"):
+            raise HTTPException(status_code=403, detail=_MUTED)

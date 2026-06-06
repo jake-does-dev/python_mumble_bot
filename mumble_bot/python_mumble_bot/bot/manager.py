@@ -798,7 +798,16 @@ class VoiceStateManager(EventManager):
                 continue
             if name == bot_name:
                 continue
-            members.append({"id": name, "name": name})
+            # A user must have both mic and audio on to play; capture self- and
+            # server-applied mute/deaf so the web can gate it.
+            members.append(
+                {
+                    "id": name,
+                    "name": name,
+                    "mute": bool(user.get("self_mute") or user.get("mute")),
+                    "deaf": bool(user.get("self_deaf") or user.get("deaf")),
+                }
+            )
 
         channels = [
             {

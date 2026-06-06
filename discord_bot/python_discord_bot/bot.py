@@ -240,7 +240,14 @@ class DiscordBot(commands.Bot):
         present = []
         if voice_client is not None:
             present = [
-                {"id": str(m.id), "name": m.display_name}
+                {
+                    "id": str(m.id),
+                    "name": m.display_name,
+                    # A user must have both mic and audio on to play; capture
+                    # self- and server-applied mute/deaf so the web can gate it.
+                    "mute": bool(m.voice and (m.voice.mute or m.voice.self_mute)),
+                    "deaf": bool(m.voice and (m.voice.deaf or m.voice.self_deaf)),
+                }
                 for m in voice_client.channel.members
                 if not m.bot
             ]
