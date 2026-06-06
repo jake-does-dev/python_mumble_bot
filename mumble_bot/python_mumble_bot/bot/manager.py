@@ -146,7 +146,7 @@ class PlaybackManager(EventManager):
                 mixed = None
                 finished = []
                 for key, v in self._voices.items():
-                    chunk = v["pcm"][v["pos"]:v["pos"] + frame_bytes]
+                    chunk = v["pcm"][v["pos"] : v["pos"] + frame_bytes]
                     if not chunk:
                         finished.append(key)
                         continue
@@ -168,7 +168,7 @@ class PlaybackManager(EventManager):
             if append and v is not None and v["pos"] < len(v["pcm"]):
                 # Concatenate after the not-yet-played remainder (compact the
                 # already-played head so the buffer doesn't grow unbounded).
-                v["pcm"] = v["pcm"][v["pos"]:] + pcm
+                v["pcm"] = v["pcm"][v["pos"] :] + pcm
                 v["pos"] = 0
             else:
                 self._voices[key] = {"pcm": pcm, "pos": 0}
@@ -181,8 +181,12 @@ class PlaybackManager(EventManager):
         except OSError:
             mtime = 0
         key = (
-            str(file), round(mtime, 3), pitch_filter,
-            round(volume, 3), round(speed, 4), round(shift, 4),
+            str(file),
+            round(mtime, 3),
+            pitch_filter,
+            round(volume, 3),
+            round(speed, 4),
+            round(shift, 4),
         )
         pcm = self._pcm_cache.get(key)
         if pcm is not None:
@@ -194,7 +198,10 @@ class PlaybackManager(EventManager):
         )
         self._pcm_cache[key] = pcm
         self._pcm_cache_bytes += len(pcm)
-        while self._pcm_cache_bytes > self.PCM_CACHE_MAX_BYTES and len(self._pcm_cache) > 1:
+        while (
+            self._pcm_cache_bytes > self.PCM_CACHE_MAX_BYTES
+            and len(self._pcm_cache) > 1
+        ):
             _, evicted = self._pcm_cache.popitem(last=False)  # evict oldest
             self._pcm_cache_bytes -= len(evicted)
         return pcm, False
@@ -331,7 +338,7 @@ class PlaybackManager(EventManager):
             cap = max(min_note_bytes, int((n.duration / speed) * sr) * bpf)
             seg = pcm[:cap]
             if limit_bytes:
-                seg = seg[:limit_bytes - offset]  # don't ring past the cap
+                seg = seg[: limit_bytes - offset]  # don't ring past the cap
             if not seg:
                 continue
             placements.append((offset, seg))
@@ -342,23 +349,30 @@ class PlaybackManager(EventManager):
 
         canvas = bytearray(max_end)
         for i, (offset, seg) in enumerate(placements):
-            region = bytes(canvas[offset:offset + len(seg)])
+            region = bytes(canvas[offset : offset + len(seg)])
             if len(region) < len(seg):
-                seg = seg[:len(region)]
+                seg = seg[: len(region)]
             if not seg:
                 continue
             mixed = audioop.add(region, seg, 2)
-            canvas[offset:offset + len(mixed)] = mixed
+            canvas[offset : offset + len(mixed)] = mixed
             # audioop holds the GIL; yield every few notes so the mixer thread
             # (5ms/tick) isn't starved during a long render → no stutter.
             if i % 8 == 7:
                 time.sleep(0.001)
 
-        gain_db = (self.state_manager.get_clip_gain_db(event.clip_ref) or 0) + (event.gain or 0)
-        volume = self.state_manager.get_volume() * transform.gain_db_to_multiplier(gain_db)
+        gain_db = (self.state_manager.get_clip_gain_db(event.clip_ref) or 0) + (
+            event.gain or 0
+        )
+        volume = self.state_manager.get_volume() * transform.gain_db_to_multiplier(
+            gain_db
+        )
         log.info(
             "[song] %s on %s: %d notes, %d shifts, %.1fs",
-            event.song_file, event.clip_ref, len(notes), len(shift_pcm),
+            event.song_file,
+            event.clip_ref,
+            len(notes),
+            len(shift_pcm),
             len(canvas) / (sr * bpf),
         )
         pcm = self._finalize_song_pcm(bytes(canvas), volume)
@@ -376,15 +390,34 @@ class PlaybackManager(EventManager):
             self.SONG_LOUDNORM, volume, max(0.0, dur - fade), fade
         )
         cmd = [
-            "ffmpeg", "-hide_banner", "-loglevel", "error",
-            "-f", "s16le", "-ar", str(sr), "-ac", "1", "-i", "pipe:0",
-            "-af", audio_filter,
-            "-f", "s16le", "-ar", str(sr), "-ac", "1", "pipe:1",
+            "ffmpeg",
+            "-hide_banner",
+            "-loglevel",
+            "error",
+            "-f",
+            "s16le",
+            "-ar",
+            str(sr),
+            "-ac",
+            "1",
+            "-i",
+            "pipe:0",
+            "-af",
+            audio_filter,
+            "-f",
+            "s16le",
+            "-ar",
+            str(sr),
+            "-ac",
+            "1",
+            "pipe:1",
         ]
         proc = sp.run(cmd, input=pcm, stdout=sp.PIPE, stderr=sp.PIPE)
         if proc.returncode == 0 and proc.stdout:
             return proc.stdout
-        log.warning("song: finalize failed (%s), using raw mix", proc.stderr.decode()[:200])
+        log.warning(
+            "song: finalize failed (%s), using raw mix", proc.stderr.decode()[:200]
+        )
         return audioop.mul(pcm, 2, volume)
 
     # -- song queue (now-playing + upcoming + skip) ------------------------

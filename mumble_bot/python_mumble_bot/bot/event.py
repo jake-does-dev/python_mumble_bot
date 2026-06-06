@@ -50,14 +50,24 @@ class MusicEvent(Event):
 class MidiSongEvent(Event):
     """Play a MIDI song using a clip as the instrument (web-triggered)."""
 
-    def __init__(self, clip_ref, song_file, transpose=0, speed=1.0, gain=0.0,
-                 max_seconds=0.0, requested_by=None, song_name=None, clip_name=None):
+    def __init__(
+        self,
+        clip_ref,
+        song_file,
+        transpose=0,
+        speed=1.0,
+        gain=0.0,
+        max_seconds=0.0,
+        requested_by=None,
+        song_name=None,
+        clip_name=None,
+    ):
         super().__init__(clip_ref)
         self.clip_ref = clip_ref
-        self.song_file = song_file      # filename under audio/music, e.g. "foo.mid"
-        self.transpose = transpose      # semitone offset on top of auto-centring
-        self.speed = speed              # global tempo multiplier (onset spacing)
-        self.gain = gain                # dB, applied to the whole render
+        self.song_file = song_file  # filename under audio/music, e.g. "foo.mid"
+        self.transpose = transpose  # semitone offset on top of auto-centring
+        self.speed = speed  # global tempo multiplier (onset spacing)
+        self.gain = gain  # dB, applied to the whole render
         self.max_seconds = max_seconds  # 0 = full song
         self.requested_by = requested_by
         # Display names for the now-playing mini-player (fall back to file/ref).

@@ -64,17 +64,35 @@ def _event(song="gstq.mid", clip="dm0", **kw):
 def test_event_display_names_default_to_file_and_ref():
     e = MidiSongEvent(clip_ref="dm0", song_file="gstq.mid")
     assert e.song_name == "gstq.mid" and e.clip_name == "dm0"
-    e2 = MidiSongEvent(clip_ref="dm0", song_file="gstq.mid",
-                       song_name="God Save the Queen", clip_name="dry_fart")
+    e2 = MidiSongEvent(
+        clip_ref="dm0",
+        song_file="gstq.mid",
+        song_name="God Save the Queen",
+        clip_name="dry_fart",
+    )
     assert e2.song_name == "God Save the Queen" and e2.clip_name == "dry_fart"
 
 
 def test_enqueue_publishes_upcoming_queue():
     m = _mgr()
-    m.enqueue_song(_event(song="a.mid", clip="c1", song_name="Alpha", clip_name="one",
-                          requested_by="winneh"))
-    m.enqueue_song(_event(song="b.mid", clip="c2", song_name="Bravo", clip_name="two",
-                          requested_by="bob"))
+    m.enqueue_song(
+        _event(
+            song="a.mid",
+            clip="c1",
+            song_name="Alpha",
+            clip_name="one",
+            requested_by="winneh",
+        )
+    )
+    m.enqueue_song(
+        _event(
+            song="b.mid",
+            clip="c2",
+            song_name="Bravo",
+            clip_name="two",
+            requested_by="bob",
+        )
+    )
 
     doc = _state(m)
     assert doc["_id"] == "singleton"
@@ -87,9 +105,13 @@ def test_enqueue_publishes_upcoming_queue():
 def test_publish_serialises_current_song():
     m = _mgr()
     import datetime as dt
+
     m._song_current = {
-        "song_name": "Alpha", "clip_name": "one", "requested_by": "winneh",
-        "started_at": dt.datetime(2026, 6, 6, 12, 0, 0), "duration_s": 12.5,
+        "song_name": "Alpha",
+        "clip_name": "one",
+        "requested_by": "winneh",
+        "started_at": dt.datetime(2026, 6, 6, 12, 0, 0),
+        "duration_s": 12.5,
     }
     m._publish_song_state()
     cur = _state(m)["current"]
@@ -108,8 +130,13 @@ def test_stop_clears_queue_and_current_and_signals_skip():
     m = _mgr()
     m.enqueue_song(_event(song_name="Alpha"))
     m.enqueue_song(_event(song_name="Bravo"))
-    m._song_current = {"song_name": "Alpha", "clip_name": "one",
-                       "requested_by": "w", "started_at": None, "duration_s": 5}
+    m._song_current = {
+        "song_name": "Alpha",
+        "clip_name": "one",
+        "requested_by": "w",
+        "started_at": None,
+        "duration_s": 5,
+    }
 
     m.stop()
 
