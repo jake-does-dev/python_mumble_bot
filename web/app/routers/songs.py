@@ -40,6 +40,21 @@ def song_history(current_user: str = Depends(get_current_user)):
     return SongsService().get_history()
 
 
+@router.get("/now-playing")
+def now_playing(current_user: str = Depends(get_current_user)):
+    """The currently-playing song (with start time + duration for a progress
+    bar) and the upcoming song queue."""
+    return CommandsService().get_song_state()
+
+
+@router.post("/skip")
+def skip_song(current_user: str = Depends(get_current_user)):
+    """Skip the currently-playing song — open to everyone, like Stop."""
+    enforce_presence(current_user, "skip")
+    CommandsService().enqueue_skip_song(requested_by=current_user)
+    return {"message": "Skipped"}
+
+
 @router.post("/upload")
 async def upload_song(
     file: UploadFile = File(...),

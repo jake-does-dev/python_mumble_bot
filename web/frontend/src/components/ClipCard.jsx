@@ -19,7 +19,12 @@ function formatDate(iso) {
   return new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
 }
 
-export default function ClipCard({ clip, onToggleFavourite, onPlay, onDelete, onAddToQueue, onGenerateQueue, onEdit, onVote, onTrimmed, onGain, username = null, playing, isAdmin = false, view = 'grid', preset = null }) {
+function formatDuration(s) {
+  if (s == null) return null
+  return s < 10 ? `${s.toFixed(1)}s` : `${Math.round(s)}s`
+}
+
+export default function ClipCard({ clip, onToggleFavourite, onPlay, onDelete, onAddToQueue, onGenerateQueue, onEdit, onVote, onTrimmed, onGain, username = null, playing, isAdmin = false, view = 'grid', preset = null, picking = false, selectedInstrument = false, onSelectInstrument = null }) {
   const [pitch, setPitch] = useState(() => loadSetting(clip.identifier, 'pitch', 0))
   const [speed, setSpeed] = useState(() => loadSetting(clip.identifier, 'speed', 1))
   const [confirmDelete, setConfirmDelete] = useState(false)
@@ -168,7 +173,16 @@ export default function ClipCard({ clip, onToggleFavourite, onPlay, onDelete, on
   }, [clip.name, editing])
 
   return (
-    <div className={`${styles.card} ${view === 'list' ? styles.cardList : ''}`}>
+    <div className={`${styles.card} ${view === 'list' ? styles.cardList : ''} ${selectedInstrument ? styles.cardSelected : ''}`}>
+      {picking && (
+        <button
+          className={`${styles.useInstrument} ${selectedInstrument ? styles.useInstrumentActive : ''}`}
+          onClick={() => onSelectInstrument && onSelectInstrument(clip)}
+          title="Use this clip as the song's instrument"
+        >
+          {selectedInstrument ? '✓ Selected instrument' : '🎵 Use as instrument'}
+        </button>
+      )}
       {editing ? (
         <div className={styles.editForm}>
           <input
@@ -230,6 +244,9 @@ export default function ClipCard({ clip, onToggleFavourite, onPlay, onDelete, on
               title={clip.uploaded_by ? `id: ${clip.identifier}` : undefined}
             >
               {clip.uploaded_by ? `↑ ${clip.uploaded_by}` : clip.identifier}
+              {clip.duration_s != null && (
+                <span className={styles.duration} title="Clip length"> · {formatDuration(clip.duration_s)}</span>
+              )}
             </span>
           </div>
           <div className={styles.tags}>

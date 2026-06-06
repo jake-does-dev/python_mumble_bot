@@ -322,7 +322,7 @@ class PlaybackManager(EventManager):
             return
 
         canvas = bytearray(max_end)
-        for offset, seg in placements:
+        for i, (offset, seg) in enumerate(placements):
             region = bytes(canvas[offset:offset + len(seg)])
             if len(region) < len(seg):
                 seg = seg[:len(region)]
@@ -330,6 +330,10 @@ class PlaybackManager(EventManager):
                 continue
             mixed = audioop.add(region, seg, 2)
             canvas[offset:offset + len(mixed)] = mixed
+            # audioop holds the GIL; yield every few notes so the mixer thread
+            # (5ms/tick) isn't starved during a long render → no stutter.
+            if i % 8 == 7:
+                time.sleep(0.001)
 
         gain_db = (self.state_manager.get_clip_gain_db(event.clip_ref) or 0) + (event.gain or 0)
         volume = self.state_manager.get_volume() * transform.gain_db_to_multiplier(gain_db)
@@ -794,7 +798,16 @@ class VoiceStateManager(EventManager):
                 continue
             if name == bot_name:
                 continue
-            members.append({"id": name, "name": name})
+            # A user must have both mic and audio on to play; capture self- and
+            # server-applied mute/deaf so the web can gate it.
+            members.append(
+                {
+                    "id": name,
+                    "name": name,
+                    "mute": bool(user.get("self_mute") or user.get("mute")),
+                    "deaf": bool(user.get("self_deaf") or user.get("deaf")),
+                }
+            )
 
         channels = [
             {

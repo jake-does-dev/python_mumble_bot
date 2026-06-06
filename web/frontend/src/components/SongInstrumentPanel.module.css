@@ -1,0 +1,117 @@
+.panel {
+  border: 1px solid var(--accent-border);
+  background: var(--accent-bg);
+  border-radius: 8px;
+  padding: 0.75rem;
+  margin-bottom: 1rem;
+  flex-shrink: 0;
+}
+
+.head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.4rem;
+}
+
+.label {
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--accent);
+}
+
+.cancel {
+  background: transparent;
+  border: none;
+  color: var(--text);
+  font-size: 0.85rem;
+  cursor: pointer;
+  padding: 0 2px;
+  line-height: 1;
+}
+
+.cancel:hover {
+  color: var(--text-h);
+}
+
+.song {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--text-h);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-bottom: 0.5rem;
+}
+
+.selected,
+.prompt {
+  font-size: 0.78rem;
+  border-radius: 6px;
+  padding: 5px 8px;
+  margin-bottom: 0.6rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.selected {
+  color: var(--accent);
+  background: var(--bg);
+  border: 1px solid var(--accent-border);
+  font-weight: 600;
+}
+
+.selDot {
+  font-size: 0.7rem;
+}
+
+.prompt {
+  color: var(--text);
+  border: 1px dashed var(--border);
+}
+
+.group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  margin-bottom: 0.7rem;
+}
+
+.row {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font-size: 0.78rem;
+  color: var(--text);
+}
+
+.row strong {
+  color: var(--text-h);
+}
+
+.row input[type="range"] {
+  width: 100%;
+}
+
+.play {
+  width: 100%;
+  padding: 0.5rem;
+  border: 1px solid var(--accent-border);
+  border-radius: 6px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+
+.play:disabled {
+  opacity: 0.5;
+  cursor: default;
+  background: transparent;
+  color: var(--text);
+}

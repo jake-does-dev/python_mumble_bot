@@ -205,6 +205,31 @@
   .twoCol {
     grid-template-columns: 1fr;
   }
+
+  .page {
+    padding: 0 0.85rem;
+  }
+
+  .header {
+    padding: 0.7rem 0;
+  }
+
+  .cards {
+    grid-template-columns: 1fr 1fr;
+    gap: 0.6rem;
+  }
+
+  .card {
+    padding: 0.8rem;
+  }
+
+  .panel {
+    padding: 0.85rem;
+  }
+
+  .periodBar {
+    gap: 0.5rem;
+  }
 }
 
 .panel {
