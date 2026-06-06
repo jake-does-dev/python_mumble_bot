@@ -79,6 +79,11 @@ class PlaybackManager(EventManager):
     SONG_MIN_NOTE_SECONDS = 0.08
     SONG_LOUDNORM = "loudnorm=I=-16:TP=-1.5:LRA=11"
 
+    # Songs play on their own mixer voice, serialised one-at-a-time by the song
+    # worker (a "now playing" + upcoming-queue mini-player, mirrored to the
+    # shared `song_state` doc so the web can show it — same as the Discord bot).
+    SONG_VOICE = "__song__"
+
     def __init__(self, mumble, state_manager):
         self.mumble = mumble
         self.state_manager = state_manager
@@ -95,6 +100,19 @@ class PlaybackManager(EventManager):
             target=self._mixer_loop, name="pmb-mixer", daemon=True
         )
         self._mixer_thread.start()
+
+        # Song queue: pending MidiSongEvents + the one currently playing. The
+        # worker thread drains them one at a time so songs never overlap, and
+        # mirrors the now-playing + queue to the `song_state` doc for the web.
+        self._song_pending = []
+        self._song_current = None  # dict the web renders, or None when idle
+        self._song_lock = threading.Lock()
+        self._skip_flag = threading.Event()
+        self._song_state_clean = False  # cleared stale state on startup yet?
+        self._song_worker_thread = threading.Thread(
+            target=self._song_worker_loop, name="pmb-song-worker", daemon=True
+        )
+        self._song_worker_thread.start()
 
     def _frame_bytes(self, so):
         # One packet's worth of mono 16-bit PCM (matches pymumble's chunking).
@@ -195,7 +213,7 @@ class PlaybackManager(EventManager):
         elif isinstance(event, VocodeEvent):
             self._process_vocode_event(event)
         elif isinstance(event, MidiSongEvent):
-            self._play_midi_song(event)
+            self.enqueue_song(event)
         elif isinstance(event, MusicEvent):
             self._play_music(event)
 
@@ -256,9 +274,10 @@ class PlaybackManager(EventManager):
         # queues / legacy events so they stay sequential.
         self._submit_voice(key, segment, event.append)
 
-    def _play_midi_song(self, event):
+    def _render_midi_song(self, event):
         """Render a MIDI song into one mono PCM buffer using a clip as the
-        instrument, then play it through the mixer.
+        instrument. Returns (pcm_bytes, duration_seconds), or (None, 0.0) if
+        there's nothing to play.
 
         Each note triggers the clip pitch-shifted to that note's pitch (relative
         to the song's median, so shifts stay small), laid onto a silent canvas at
@@ -271,10 +290,10 @@ class PlaybackManager(EventManager):
             notes, _duration = parse_midi(song_path)
         except Exception:
             log.exception("song: failed to parse %s", song_path)
-            return
+            return None, 0.0
         if not notes:
             log.warning("song: %s has no notes", song_path)
-            return
+            return None, 0.0
 
         sr = self.SAMPLE_RATE
         bpf = 2  # mono 16-bit
@@ -319,7 +338,7 @@ class PlaybackManager(EventManager):
             max_end = max(max_end, offset + len(seg))
 
         if max_end == 0:
-            return
+            return None, 0.0
 
         canvas = bytearray(max_end)
         for i, (offset, seg) in enumerate(placements):
@@ -342,7 +361,9 @@ class PlaybackManager(EventManager):
             event.song_file, event.clip_ref, len(notes), len(shift_pcm),
             len(canvas) / (sr * bpf),
         )
-        self._play_sound(self._finalize_song_pcm(bytes(canvas), volume))
+        pcm = self._finalize_song_pcm(bytes(canvas), volume)
+        duration = len(pcm) / (sr * bpf)
+        return pcm, duration
 
     def _finalize_song_pcm(self, pcm, volume):
         """Loudness-normalise the assembled mono canvas, apply the overall
@@ -365,6 +386,103 @@ class PlaybackManager(EventManager):
             return proc.stdout
         log.warning("song: finalize failed (%s), using raw mix", proc.stderr.decode()[:200])
         return audioop.mul(pcm, 2, volume)
+
+    # -- song queue (now-playing + upcoming + skip) ------------------------
+
+    def enqueue_song(self, event):
+        """Queue a MIDI song; the worker plays it after any already in flight."""
+        with self._song_lock:
+            self._song_pending.append(event)
+        self._publish_song_state()
+
+    def skip_song(self):
+        """Skip the song currently playing — the worker advances to the next."""
+        self._skip_flag.set()
+
+    def _drop_voice(self, key):
+        with self._mix_lock:
+            self._voices.pop(key, None)
+
+    def _publish_song_state(self):
+        """Mirror current + upcoming queue to the `song_state` singleton so the
+        web shows a now-playing mini-player. Returns True on success. Guarded so
+        it's a no-op (not a crash) before mongo is connected."""
+        with self._song_lock:
+            current = dict(self._song_current) if self._song_current else None
+            queue = [
+                {
+                    "song_name": e.song_name,
+                    "clip_name": e.clip_name,
+                    "requested_by": e.requested_by,
+                }
+                for e in self._song_pending
+            ]
+        try:
+            self.state_manager.mongo_interface.db.song_state.replace_one(
+                {"_id": "singleton"},
+                {
+                    "_id": "singleton",
+                    "current": current,
+                    "queue": queue,
+                    "updated_at": dt.datetime.utcnow(),
+                },
+                upsert=True,
+            )
+            return True
+        except Exception:
+            return False
+
+    def _song_worker_loop(self):
+        """Drain the song queue one at a time so songs never overlap."""
+        while True:
+            try:
+                with self._song_lock:
+                    event = self._song_pending.pop(0) if self._song_pending else None
+                if event is None:
+                    # Clear any stale now-playing left by a previous run, once
+                    # mongo is reachable, then idle.
+                    if not self._song_state_clean and self._publish_song_state():
+                        self._song_state_clean = True
+                    time.sleep(0.05)
+                    continue
+                self._play_one_song(event)
+            except Exception:
+                log.exception("song worker: tick failed")
+                time.sleep(0.1)
+
+    def _play_one_song(self, event):
+        """Render one song and play it to completion (or until skipped)."""
+        pcm, duration = self._render_midi_song(event)
+        if not pcm:
+            return
+        with self._song_lock:
+            self._song_current = {
+                "song_name": event.song_name,
+                "clip_name": event.clip_name,
+                "requested_by": event.requested_by or "web",
+                "started_at": dt.datetime.utcnow(),
+                "duration_s": round(duration, 2),
+            }
+        self._skip_flag.clear()
+        self._publish_song_state()
+        # Own mixer voice, replacing (not appending) — the worker serialises, so
+        # there's never more than one song voice at a time.
+        self._submit_voice(self.SONG_VOICE, pcm, append=False)
+        try:
+            # The audio plays in real time over `duration`; wait that long (plus
+            # a little for pymumble's buffer tail) unless skipped.
+            deadline = time.monotonic() + duration + 0.2
+            while time.monotonic() < deadline:
+                if self._skip_flag.is_set():
+                    log.info("song skipped: %s", event.song_name)
+                    break
+                time.sleep(0.05)
+        finally:
+            self._drop_voice(self.SONG_VOICE)  # cut it now (no-op if finished)
+            self._skip_flag.clear()
+            with self._song_lock:
+                self._song_current = None
+            self._publish_song_state()
 
     def _play_music(self, event):
         piece = "audio/music/{0}".format(event.piece)
@@ -536,13 +654,18 @@ class PlaybackManager(EventManager):
         self._submit_voice("__system__", pcm, append=True)
 
     def stop(self):
-        """Panic-stop: drop every active voice and flush the output buffer."""
+        """Panic-stop: drop the song queue + every active voice, flush output."""
+        with self._song_lock:
+            self._song_pending.clear()
+            self._song_current = None
+        self._skip_flag.set()  # break the current song's wait loop, if any
         with self._mix_lock:
             self._voices.clear()
         try:
             self.mumble.sound_output.clear_buffer()
         except Exception:
             pass
+        self._publish_song_state()
 
     @staticmethod
     def _concatenate_wav_inputs(files):
@@ -694,7 +817,8 @@ class CommandManager(EventManager):
 
         if cmd_type == "play_song":
             # A MIDI song played with a clip as the instrument. The announce is a
-            # separate command (see enqueue_song), so just render and play.
+            # separate command (see enqueue_song), so just queue it; the song
+            # worker serialises playback and mirrors now-playing to the web.
             self.playback_manager.process(
                 MidiSongEvent(
                     clip_ref=command["clip_ref"],
@@ -704,8 +828,14 @@ class CommandManager(EventManager):
                     gain=command.get("gain", 0),
                     max_seconds=command.get("max_seconds", 0),
                     requested_by=command.get("requested_by"),
+                    song_name=command.get("song_name"),
+                    clip_name=command.get("clip_name"),
                 )
             )
+            return
+
+        if cmd_type == "skip_song":
+            self.playback_manager.skip_song()
             return
 
         speed = command.get("speed", 1.0)
