@@ -40,11 +40,19 @@ def _publish(monkeypatch, users):
 
 
 def test_present_excludes_bot_and_other_channels(monkeypatch):
-    state = _publish(monkeypatch, {
-        1: {"channel_id": 1, "name": "alice", "self_mute": False, "self_deaf": False},
-        2: {"channel_id": 1, "name": "thebot"},          # the bot itself
-        3: {"channel_id": 2, "name": "carol"},           # different channel
-    })
+    state = _publish(
+        monkeypatch,
+        {
+            1: {
+                "channel_id": 1,
+                "name": "alice",
+                "self_mute": False,
+                "self_deaf": False,
+            },
+            2: {"channel_id": 1, "name": "thebot"},  # the bot itself
+            3: {"channel_id": 2, "name": "carol"},  # different channel
+        },
+    )
     present = {m["name"] for m in state["present"]}
     assert present == {"alice"}
     # the gate keys the web reads
@@ -52,10 +60,18 @@ def test_present_excludes_bot_and_other_channels(monkeypatch):
 
 
 def test_self_mute_and_deaf_propagate(monkeypatch):
-    state = _publish(monkeypatch, {
-        1: {"channel_id": 1, "name": "alice", "self_mute": True, "self_deaf": False},
-        2: {"channel_id": 1, "name": "bob", "self_mute": False, "self_deaf": True},
-    })
+    state = _publish(
+        monkeypatch,
+        {
+            1: {
+                "channel_id": 1,
+                "name": "alice",
+                "self_mute": True,
+                "self_deaf": False,
+            },
+            2: {"channel_id": 1, "name": "bob", "self_mute": False, "self_deaf": True},
+        },
+    )
     present = {m["name"]: m for m in state["present"]}
     assert present["alice"]["mute"] is True and present["alice"]["deaf"] is False
     assert present["bob"]["mute"] is False and present["bob"]["deaf"] is True
@@ -64,18 +80,24 @@ def test_self_mute_and_deaf_propagate(monkeypatch):
 
 
 def test_server_mute_and_deaf_also_count(monkeypatch):
-    state = _publish(monkeypatch, {
-        1: {"channel_id": 1, "name": "alice", "mute": True, "deaf": False},
-        2: {"channel_id": 1, "name": "bob", "mute": False, "deaf": True},
-    })
+    state = _publish(
+        monkeypatch,
+        {
+            1: {"channel_id": 1, "name": "alice", "mute": True, "deaf": False},
+            2: {"channel_id": 1, "name": "bob", "mute": False, "deaf": True},
+        },
+    )
     present = {m["name"]: m for m in state["present"]}
     assert present["alice"]["mute"] is True
     assert present["bob"]["deaf"] is True
 
 
 def test_missing_flags_default_to_false(monkeypatch):
-    state = _publish(monkeypatch, {
-        1: {"channel_id": 1, "name": "alice"},
-    })
+    state = _publish(
+        monkeypatch,
+        {
+            1: {"channel_id": 1, "name": "alice"},
+        },
+    )
     alice = state["present"][0]
     assert alice["mute"] is False and alice["deaf"] is False
