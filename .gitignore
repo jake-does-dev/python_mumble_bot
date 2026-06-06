@@ -6,4 +6,7 @@ __pycache__/
 build/
 .pytest_cache/
 data/
+# Runtime clip directories — but NOT the pmb_core.audio Python package, which
+# the bots import (midi/transform) and must be in the repo.
 audio/
+!pmb_core/pmb_core/audio/
