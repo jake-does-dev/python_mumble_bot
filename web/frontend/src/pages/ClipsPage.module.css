@@ -362,8 +362,81 @@
 }
 
 @media (max-width: 768px) {
+  /* Swap the fixed-height two-pane app shell for natural document scrolling —
+     the desktop layout traps content and feels cramped on phones. */
+  .page {
+    height: auto;
+    min-height: 100dvh;
+    overflow: visible;
+    padding: 0 0.85rem;
+  }
+
+  .header {
+    position: sticky;
+    top: 0;
+    z-index: 50;
+    background: var(--bg);
+    padding: 0.7rem 0;
+    margin-bottom: 1rem;
+  }
+
+  .headerActions {
+    gap: 0.4rem;
+  }
+
+  /* Search gets its own full-width row above the sort/view controls. */
+  .searchWrap {
+    flex: 1 1 100%;
+    max-width: none;
+    order: -1;
+  }
+
   .layout {
-    grid-template-columns: 1fr;
+    display: flex;
+    flex-direction: column;
+    flex: none;
+    gap: 1rem;
+  }
+
+  .main {
+    overflow: visible;
+  }
+
+  .clipsScroll {
+    overflow: visible;
+    min-height: 0;
+    padding-right: 0;
+    padding-bottom: 1rem;
+  }
+
+  .grid {
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    gap: 0.6rem;
+  }
+
+  .sidebar {
+    overflow: visible;
+  }
+
+  /* History/queue lists shouldn't trap a nested scroll inside the page scroll. */
+  .historyList {
+    overflow: visible;
+    flex: none;
+  }
+}
+
+@media (max-width: 430px) {
+  .grid {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .title {
+    font-size: 1rem;
+  }
+
+  .mainTab {
+    padding: 0.45rem 0.8rem;
+    font-size: 0.85rem;
   }
 }
 
