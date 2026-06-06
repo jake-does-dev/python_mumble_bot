@@ -54,6 +54,7 @@ services:
       JWT_SECRET_KEY: ${JWT_SECRET_KEY}
       APP_TITLE: "Mumble Bot"
       PLAY_REQUIRES_PRESENCE: "true"
+      VOICE_CONTROL_ENABLED: "true"
     volumes:
     - /tank/pmb/audio:/app/audio
     ports:

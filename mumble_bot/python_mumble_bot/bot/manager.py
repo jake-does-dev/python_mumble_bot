@@ -700,6 +700,33 @@ class PlaybackManager(EventManager):
             pass
         self._publish_song_state()
 
+    # -- channel move (web "join a different channel" / "leave") -----------
+
+    def join_channel(self, channel_id):
+        """Move the bot ("summon" it) into the given channel. Mumble bots are
+        always in a channel, so this is a move rather than a connect."""
+        if channel_id is None:
+            return
+        try:
+            self.mumble.channels[int(channel_id)].move_in()
+            log.info("Moved to channel %s", channel_id)
+        except Exception:
+            log.exception("Failed to move to channel %s", channel_id)
+
+    def leave_channel(self):
+        """Mumble has no "disconnect from voice"; return to the home/root
+        channel (closest equivalent to Discord's leave). Uses
+        MUMBLE_SERVER_ROOT_CHANNEL if set, else the server root (id 0)."""
+        try:
+            root_name = os.getenv(ROOT_CHANNEL)
+            if root_name:
+                self.mumble.channels.find_by_name(root_name).move_in()
+            else:
+                self.mumble.channels[0].move_in()
+            log.info("Returned to root channel")
+        except Exception:
+            log.exception("Failed to return to root channel")
+
     @staticmethod
     def _concatenate_wav_inputs(files):
         command = ["sox"]
@@ -871,6 +898,18 @@ class CommandManager(EventManager):
             self.playback_manager.skip_song()
             return
 
+        if cmd_type == "join":
+            # "Summon" the bot to another channel. Mumble bots are always in a
+            # channel, so this is a move, not a connect.
+            self.playback_manager.join_channel(command.get("channel_id"))
+            return
+
+        if cmd_type == "leave":
+            # No "disconnect from voice" in Mumble — go back to the home/root
+            # channel (the closest equivalent to Discord's leave).
+            self.playback_manager.leave_channel()
+            return
+
         speed = command.get("speed", 1.0)
         pitch = command.get("pitch", 0)
 
@@ -943,19 +982,18 @@ class VoiceStateManager(EventManager):
 
     def _publish(self):
         try:
-            my_channel = self.mumble.my_channel()
-            channel_id = my_channel["channel_id"]
-            channel_name = my_channel.get("name", str(channel_id))
+            current_id = self.mumble.my_channel()["channel_id"]
         except Exception:
             return
 
         bot_name = os.getenv(MUMBLE_USERNAME)
-        members = []
+        # Group every (non-bot) user by the channel they're in, so the web can
+        # list all channels and summon the bot to any of them.
+        by_channel = {}
         for session in list(self.mumble.users):
             user = self.mumble.users[session]
             try:
-                if user["channel_id"] != channel_id:
-                    continue
+                cid = user["channel_id"]
                 name = user[NAME]
             except Exception:
                 continue
@@ -963,7 +1001,7 @@ class VoiceStateManager(EventManager):
                 continue
             # A user must have both mic and audio on to play; capture self- and
             # server-applied mute/deaf so the web can gate it.
-            members.append(
+            by_channel.setdefault(cid, []).append(
                 {
                     "id": name,
                     "name": name,
@@ -972,22 +1010,33 @@ class VoiceStateManager(EventManager):
                 }
             )
 
-        channels = [
-            {
-                "id": str(channel_id),
-                "name": channel_name,
-                "users": len(members),
-                "members": members,
-            }
-        ]
+        channels = []
+        for cid in list(self.mumble.channels):
+            try:
+                channel_name = self.mumble.channels[cid]["name"]
+            except Exception:
+                channel_name = str(cid)
+            members = by_channel.get(cid, [])
+            channels.append(
+                {
+                    "id": str(cid),
+                    "name": channel_name,
+                    "users": len(members),
+                    "members": members,
+                }
+            )
+        channels.sort(key=lambda c: int(c["id"]))
+
+        # The presence gate set is whoever is in the bot's own channel.
+        present = by_channel.get(current_id, [])
         try:
             self.mongo_interface.db.voice_state.update_one(
                 {"_id": "state"},
                 {
                     "$set": {
                         "channels": channels,
-                        "current_channel_id": str(channel_id),
-                        "present": members,
+                        "current_channel_id": str(current_id),
+                        "present": present,
                     }
                 },
                 upsert=True,
