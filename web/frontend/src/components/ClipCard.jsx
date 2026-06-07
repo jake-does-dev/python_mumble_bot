@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from 'react'
 import api from '../api'
 import TrimModal from './TrimModal'
 import GenerateQueueModal from './GenerateQueueModal'
+import TagSuggestions from './TagSuggestions'
 import {
   PITCH_MIN,
   PITCH_MAX,
@@ -24,7 +25,7 @@ function formatDuration(s) {
   return s < 10 ? `${s.toFixed(1)}s` : `${Math.round(s)}s`
 }
 
-export default function ClipCard({ clip, onToggleFavourite, onPlay, onDelete, onAddToQueue, onGenerateQueue, onEdit, onVote, onTrimmed, onGain, username = null, playing, isAdmin = false, view = 'grid', preset = null, picking = false, selectedInstrument = false, onSelectInstrument = null }) {
+export default function ClipCard({ clip, onToggleFavourite, onPlay, onDelete, onAddToQueue, onGenerateQueue, onEdit, onVote, onTrimmed, onGain, username = null, playing, isAdmin = false, view = 'grid', preset = null, picking = false, selectedInstrument = false, onSelectInstrument = null, allTags = [] }) {
   const [pitch, setPitch] = useState(() => loadSetting(clip.identifier, 'pitch', 0))
   const [speed, setSpeed] = useState(() => loadSetting(clip.identifier, 'speed', 1))
   const [confirmDelete, setConfirmDelete] = useState(false)
@@ -198,6 +199,7 @@ export default function ClipCard({ clip, onToggleFavourite, onPlay, onDelete, on
             onChange={e => setEditTags(e.target.value)}
             placeholder="tags, comma, separated"
           />
+          <TagSuggestions value={editTags} onChange={setEditTags} allTags={allTags} />
           {editError && <span className={styles.editError}>{editError}</span>}
           {isAdmin && (
             <div className={styles.gainRow}>

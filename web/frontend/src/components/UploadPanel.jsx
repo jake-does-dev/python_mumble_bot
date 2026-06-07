@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import api from '../api'
 import WaveformTrimmer from './WaveformTrimmer'
+import TagSuggestions from './TagSuggestions'
 import styles from './UploadPanel.module.css'
 
 const NAME_RE = /^[a-zA-Z0-9_\-]+$/
@@ -8,7 +9,7 @@ const MAX_SIZE_MB = 100
 const MAX_DURATION_SECS = 10        // the stored (trimmed) clip
 const MAX_SOURCE_SECS = 300         // the source you can upload to trim down (5 min)
 
-export default function UploadPanel({ onClose, onUploaded, initialFile = null }) {
+export default function UploadPanel({ onClose, onUploaded, initialFile = null, allTags = [] }) {
   const [file, setFile] = useState(null)
   const [name, setName] = useState('')
   const [tags, setTags] = useState('')
@@ -153,6 +154,7 @@ export default function UploadPanel({ onClose, onUploaded, initialFile = null })
             placeholder="funny, moments"
             disabled={uploading}
           />
+          <TagSuggestions value={tags} onChange={setTags} allTags={allTags} />
         </div>
         <div className={styles.field}>
           <label className={styles.label}>

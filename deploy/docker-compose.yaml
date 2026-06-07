@@ -37,6 +37,7 @@ services:
       MUMBLE_SERVER_USERNAME: ${MUMBLE_SERVER_USERNAME}
       MUMBLE_SERVER_PASSWORD: ${MUMBLE_SERVER_PASSWORD}
       MUMBLE_SERVER_ROOT_CHANNEL: ${MUMBLE_SERVER_ROOT_CHANNEL}
+      CLIP_CAPTURE_ENABLED: "true"
     volumes:
     - /tank/pmb/audio:/app/audio
 
@@ -55,6 +56,7 @@ services:
       APP_TITLE: "Mumble Bot"
       PLAY_REQUIRES_PRESENCE: "true"
       VOICE_CONTROL_ENABLED: "true"
+      CLIP_CAPTURE_ENABLED: "true"
     volumes:
     - /tank/pmb/audio:/app/audio
     ports:

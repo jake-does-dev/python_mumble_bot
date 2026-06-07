@@ -18,6 +18,13 @@ PLAY_REQUIRES_PRESENCE = os.getenv("PLAY_REQUIRES_PRESENCE", "").lower() in (
     "true",
     "yes",
 )
+# "Clip that" capture: only the Mumble stack runs a bot that buffers audio, so
+# gate the UI tab on this flag (the shared web image also serves the Discord stack).
+CLIP_CAPTURE_ENABLED = os.getenv("CLIP_CAPTURE_ENABLED", "").lower() in (
+    "1",
+    "true",
+    "yes",
+)
 
 router = APIRouter(prefix="/api/users", tags=["users"])
 
@@ -28,6 +35,9 @@ class ChangePassword(BaseModel):
 class VoiceLink(BaseModel):
     voice_id: Optional[str] = None
     voice_name: Optional[str] = None
+
+class CaptureOptin(BaseModel):
+    opt_in: bool
 
 @router.post("/login", response_model=Token)
 @limiter.limit("5/minute")
@@ -54,9 +64,11 @@ def me(current_user: str = Depends(get_current_user)):
         "username": current_user,
         "is_admin": users_service.is_admin(current_user),
         "voice_control": VOICE_CONTROL_ENABLED,
+        "clip_capture": CLIP_CAPTURE_ENABLED,
         "presence_required": PLAY_REQUIRES_PRESENCE,
         "voice_linked": bool(user.get("voice_id")),
         "voice_name": user.get("voice_name"),
+        "capture_optin": bool(user.get("capture_optin")),
     }
 
 @router.get("/")
@@ -76,6 +88,16 @@ def set_voice_link(
     if not users_service.set_voice_link(username, body.voice_id, body.voice_name):
         raise HTTPException(status_code=404, detail="User not found")
     return {"message": "Voice link updated"}
+
+@router.put("/me/capture-optin")
+def set_capture_optin(
+    body: CaptureOptin, current_user: str = Depends(get_current_user)
+):
+    # Self-service consent to being clipped. Until you opt in, the bot drops your
+    # audio and never buffers it, so there's nothing anyone could clip.
+    if not UsersService().set_capture_optin(current_user, body.opt_in):
+        raise HTTPException(status_code=404, detail="User not found")
+    return {"capture_optin": body.opt_in}
 
 @router.post("/change-password")
 def change_password(body: ChangePassword, current_user: str = Depends(get_current_user)):

@@ -173,6 +173,23 @@ class CommandsService:
             }
         )
 
+    def enqueue_capture(
+        self, target_voice: str, duration: float, requested_by: str
+    ) -> None:
+        # "Clip that": ask the bot to dump the last `duration` seconds of
+        # `target_voice`'s rolling buffer into a pending capture for review. The
+        # bot announces success/failure itself, so there's no announce doc here.
+        self.db.pending_commands.insert_one(
+            {
+                "type": "clip_capture",
+                "target_voice": target_voice,
+                "duration": duration,
+                "requested_by": requested_by,
+                "status": "pending",
+                "created_at": datetime.utcnow(),
+            }
+        )
+
     def get_song_state(self) -> dict:
         """Current song + upcoming queue, as mirrored by the bot."""
         doc = self.db.song_state.find_one({"_id": "singleton"})
@@ -198,7 +215,10 @@ class CommandsService:
         # Cancel anything still queued so it won't start, then tell the bot to
         # clear whatever is currently playing.
         self.db.pending_commands.update_many(
-            {"status": "pending", "type": {"$in": ["play", "queue_play", "play_song"]}},
+            {
+                "status": "pending",
+                "type": {"$in": ["play", "queue_play", "play_song", "clip_capture"]},
+            },
             {"$set": {"status": "done"}},
         )
         self.db.pending_commands.insert_one(
@@ -225,7 +245,10 @@ class CommandsService:
         # Cancel anything still queued (it shouldn't fire on a freshly-restarted
         # bot), then ask the bot to exit so Docker restarts it and it rejoins.
         self.db.pending_commands.update_many(
-            {"status": "pending", "type": {"$in": ["play", "queue_play", "play_song"]}},
+            {
+                "status": "pending",
+                "type": {"$in": ["play", "queue_play", "play_song", "clip_capture"]},
+            },
             {"$set": {"status": "done"}},
         )
         self.db.pending_commands.insert_one(
