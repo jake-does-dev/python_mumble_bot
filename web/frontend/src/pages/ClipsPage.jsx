@@ -13,6 +13,7 @@ import SongInstrumentPanel from '../components/SongInstrumentPanel'
 import VoicePanel from '../components/VoicePanel'
 import PadBoard from '../components/PadBoard'
 import HelpModal from '../components/HelpModal'
+import EntranceModal from '../components/EntranceModal'
 import styles from './ClipsPage.module.css'
 
 const newId = () => Date.now().toString(36) + Math.random().toString(36).slice(2)
@@ -78,6 +79,7 @@ export default function ClipsPage() {
   const [dragActive, setDragActive] = useState(false)  // file dragged over window
   const [droppedFile, setDroppedFile] = useState(null)
   const [helpOpen, setHelpOpen] = useState(false)
+  const [entranceOpen, setEntranceOpen] = useState(false)
   const [tagsExpanded, setTagsExpanded] = useState(() => localStorage.getItem('pmb_tags_expanded') !== 'false')
 
   const [sidebarTab, setSidebarTab] = useState('history')
@@ -663,6 +665,7 @@ export default function ClipsPage() {
           >
             {theme === 'dark' ? '☀' : '☾'}
           </button>
+          <button className={styles.statsLink} onClick={() => setEntranceOpen(true)} title="Set the sound that plays when you join the bot's channel">🔔 Entrance</button>
           <button className={styles.statsLink} onClick={() => setHelpOpen(true)} title="How to use the bot">❓ Help</button>
           <Link to="/stats" className={styles.statsLink}>📊 Stats</Link>
           {isAdmin && <Link to="/admin/users" className={styles.statsLink}>⚙ Users</Link>}
@@ -1041,6 +1044,10 @@ export default function ClipsPage() {
           presenceRequired={presenceRequired}
           appTitle={document.title || 'the bot'}
         />
+      )}
+
+      {entranceOpen && (
+        <EntranceModal clips={clips} onClose={() => setEntranceOpen(false)} />
       )}
     </div>
   )

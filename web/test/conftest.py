@@ -32,6 +32,7 @@ _GET_DB_MODULES = [
     "app.services.stats",
     "app.services.votes",
     "app.services.favourites",
+    "app.services.entrance",
     "app.routers.voice",
 ]
 
