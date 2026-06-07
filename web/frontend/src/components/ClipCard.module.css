@@ -49,20 +49,51 @@
   gap: 1rem;
 }
 
+/* Cap the name column (don't let it grow) so the leftover width goes to the
+   sliders instead of becoming dead space between the name and the sliders. */
 .cardList .info {
-  flex: 0 0 200px;
+  flex: 0 1 240px;
   min-width: 0;
 }
 
+/* Stack the name over the uploader/id line so the name gets the full column
+   width instead of sharing the row with it (which crushed it). */
+.cardList .nameRow {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0;
+}
+
 .cardList .name {
+  width: 100%;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
+.cardList .nameInner {
+  font-size: 1rem;
+}
+
+/* Tags sit on their own line beneath the name (in the capped left column), so
+   they never eat into the name's width or trigger its hover-marquee. Wrap to at
+   most ~2 rows, clipping any extras, to keep row heights sane. The date stays
+   hidden in the dense list view (still shown in grid/card view). */
 .cardList .tags {
-  flex-wrap: nowrap;
+  flex-wrap: wrap;
+  gap: 3px;
+  margin-top: 3px;
+  max-height: 2.6rem;
   overflow: hidden;
+}
+
+.cardList .tag {
+  font-size: 0.68rem;
+  padding: 1px 6px;
+}
+
+.cardList .date {
+  display: none;
 }
 
 .cardList .sliders {

@@ -80,6 +80,17 @@ class RecordEvent(Event):
         super().__init__(data)
 
 
+class CaptureEvent(Event):
+    """Web-triggered "clip that": dump the last `duration` seconds of `target`'s
+    voice (from the rolling buffer) into a pending capture for review."""
+
+    def __init__(self, target, duration, requested_by=None):
+        super().__init__(target)
+        self.target = target
+        self.duration = duration
+        self.requested_by = requested_by
+
+
 class TextEvent(Event):
     def __init__(self, data):
         super().__init__(data)

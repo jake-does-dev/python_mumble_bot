@@ -18,15 +18,24 @@ from python_mumble_bot.bot.constants import (
 )
 from python_mumble_bot.bot.event import AudioEvent
 from python_mumble_bot.bot.manager import (
+    CaptureManager,
     CommandManager,
     PlaybackManager,
-    RecordingManager,
     StateManager,
     TextMessageManager,
     VoiceStateManager,
 )
 
 log = logging.getLogger("pmb.mumble.client")
+
+# "Clip that" / instant replay keeps a rolling buffer of everyone's voice, which
+# means receiving (and continuously decoding) all incoming audio. Off unless
+# enabled, so non-capture deployments don't pay the cost or hold the audio.
+CLIP_CAPTURE_ENABLED = os.getenv("CLIP_CAPTURE_ENABLED", "true").lower() in (
+    "1",
+    "true",
+    "yes",
+)
 
 
 def connect():
@@ -35,7 +44,8 @@ def connect():
         os.getenv(MUMBLE_USERNAME),
         password=os.getenv(MUMBLE_PASSWORD),
     )
-    mumble.set_receive_sound = False
+    # receive_sound gates whether pymumble decodes incoming audio at all.
+    mumble.receive_sound = CLIP_CAPTURE_ENABLED
 
     client = Client(mumble)
     client.start()
@@ -48,7 +58,7 @@ def connect():
 class Client:
     STATE_MANAGER = "STATE_MANAGER"
     PLAYBACK_MANAGER = "PLAYBACK_MANAGER"
-    RECORDING_MANAGER = "RECORDING_MANAGER"
+    CAPTURE_MANAGER = "CAPTURE_MANAGER"
     TEXT_MESSAGE_MANAGER = "TEXT_MESSAGE_MANAGER"
     COMMAND_MANAGER = "COMMAND_MANAGER"
     VOICE_STATE_MANAGER = "VOICE_STATE_MANAGER"
@@ -61,7 +71,7 @@ class Client:
         mumble,
         state_manager=None,
         playback_manager=None,
-        recording_manager=None,
+        capture_manager=None,
         text_message_manager=None,
     ):
         self.mumble = mumble
@@ -78,19 +88,26 @@ class Client:
             if playback_manager is None
             else playback_manager
         )
-        recording_manager = (
-            RecordingManager(MumbleWrapper(self.mumble))
-            if recording_manager is None
-            else recording_manager
-        )
         text_message_manager = (
             TextMessageManager(MumbleWrapper(self.mumble))
             if text_message_manager is None
             else text_message_manager
         )
+        capture_manager = (
+            CaptureManager(
+                MumbleWrapper(self.mumble),
+                state_manager.mongo_interface,
+                text_message_manager,
+            )
+            if capture_manager is None
+            else capture_manager
+        )
 
         command_manager = CommandManager(
-            state_manager.mongo_interface, playback_manager, text_message_manager
+            state_manager.mongo_interface,
+            playback_manager,
+            text_message_manager,
+            capture_manager,
         )
 
         voice_state_manager = VoiceStateManager(
@@ -99,7 +116,7 @@ class Client:
 
         self.managers[self.STATE_MANAGER] = state_manager
         self.managers[self.PLAYBACK_MANAGER] = playback_manager
-        self.managers[self.RECORDING_MANAGER] = recording_manager
+        self.managers[self.CAPTURE_MANAGER] = capture_manager
         self.managers[self.TEXT_MESSAGE_MANAGER] = text_message_manager
         self.managers[self.COMMAND_MANAGER] = command_manager
         self.managers[self.VOICE_STATE_MANAGER] = voice_state_manager
@@ -120,6 +137,15 @@ class Client:
             pymumble.constants.PYMUMBLE_CLBK_USERCREATED,
             self.user_created_command,
         )
+
+        # One sink for all received audio → the rolling buffer (+ recording).
+        # Registering this stops pymumble queueing per-user sound, so nothing else
+        # may consume it. Only when capture is enabled (else audio isn't received).
+        if CLIP_CAPTURE_ENABLED:
+            self.mumble.callbacks.set_callback(
+                pymumble.constants.PYMUMBLE_CLBK_SOUNDRECEIVED,
+                self.managers[self.CAPTURE_MANAGER].on_sound,
+            )
 
     def interpret_command(self, incoming):
         command = self.command_resolver.resolve(incoming)

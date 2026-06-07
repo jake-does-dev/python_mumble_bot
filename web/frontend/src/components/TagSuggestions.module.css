@@ -1,0 +1,32 @@
+.wrap {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  max-height: 5.5rem;
+  overflow-y: auto;
+  margin-top: 0.1rem;
+}
+
+.pill,
+.active {
+  font-size: 0.72rem;
+  padding: 0.15rem 0.5rem;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--code-bg);
+  color: var(--text-m);
+  cursor: pointer;
+  line-height: 1.4;
+}
+
+.pill:hover {
+  border-color: var(--accent-border);
+  color: var(--accent);
+}
+
+.active {
+  border-color: var(--accent-border);
+  background: var(--accent);
+  color: #fff;
+  font-weight: 600;
+}

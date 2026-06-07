@@ -4,12 +4,13 @@ import datetime as dt
 import json
 import logging
 import os
+import re
 import statistics
 import subprocess as sp
 import threading
 import time
 import wave
-from collections import OrderedDict
+from collections import OrderedDict, deque
 from pathlib import Path
 
 import requests
@@ -17,14 +18,13 @@ from pmb_core.audio import transform
 from pmb_core.audio.midi import parse_midi
 
 from python_mumble_bot.bot.constants import (
-    BITRATE,
-    DEFAULT_RECORDING_DIR,
     MUMBLE_USERNAME,
     NAME,
     ROOT_CHANNEL,
 )
 from python_mumble_bot.bot.event import (
     AudioEvent,
+    CaptureEvent,
     ChannelTextEvent,
     ListMusicEvent,
     MidiSongEvent,
@@ -764,71 +764,248 @@ class TextMessageManager(EventManager):
             self.channel_wrapper = self.mumble_wrapper.get_channel(channel_name)
 
 
-class RecordingManager(EventManager):
-    def __init__(self, mumble_wrapper, recording_dir=Path(DEFAULT_RECORDING_DIR)):
-        self.mumble_wrapper = mumble_wrapper
-        self.recording_dir = recording_dir
-        self.is_recording = False
-        self.files = dict()
+class CaptureManager(EventManager):
+    """The single sink for received audio.
 
+    pymumble decodes every speaker's Opus stream into a per-user ``SoundChunk``
+    (48 kHz mono int16). We register one ``PYMUMBLE_CLBK_SOUNDRECEIVED`` callback
+    (``on_sound``) and from it:
+
+      * keep a rolling per-user PCM buffer (the last ``BUFFER_SECONDS``) so the web
+        UI can "clip that" — dump a chosen person's recent voice into a clip; and
+      * when ``/pmb record`` is active, also write the per-user WAVs.
+
+    Registering that callback stops pymumble filling the per-user ``sound`` queues,
+    so this manager must be the *only* consumer of received audio (it therefore
+    absorbs the old polling RecordingManager).
+
+    Privacy: the rolling buffer only ever holds people who have **opted in** (via
+    the web UI). Everyone else's audio is dropped the instant it arrives — never
+    buffered. ``/record`` is a separate, deliberate, announced action and still
+    captures everyone present.
+    """
+
+    BUFFER_SECONDS = 30
+    SAMPLE_RATE = 48000  # pymumble decodes to 48 kHz mono int16
+    OPTIN_REFRESH_SECS = 5  # how often to re-read consent from the DB
+
+    def __init__(
+        self,
+        mumble_wrapper,
+        mongo_interface,
+        text_message_manager=None,
+        captures_dir=Path("audio/captures"),
+        recording_dir=Path("audio/recordings"),
+    ):
+        self.mumble_wrapper = mumble_wrapper
+        self.mongo_interface = mongo_interface
+        self.text_message_manager = text_message_manager
+        self.captures_dir = captures_dir
+        self.recording_dir = recording_dir
+        self._lock = threading.Lock()
+        self._buffers = {}  # user name -> deque[(chunk.time, pcm bytes)]
+        self._optin = set()  # voice_ids consenting to be clipped
+        self._optin_at = 0.0
+        self.is_recording = False
+        self._record_files = {}
+        self._record_stamp = None
+
+    # ---- audio sink (runs on pymumble's network thread) --------------------
+    def on_sound(self, user, chunk):
+        if chunk is None or not chunk.pcm:
+            return
+        name = user[NAME]
+        with self._lock:
+            # /record captures everyone present (deliberate, announced action).
+            if self.is_recording:
+                self._write_recording(name, chunk.pcm)
+            # The rolling "clip that" buffer only holds opted-in users — everyone
+            # else's audio is dropped right here and never stored.
+            if name not in self._optin:
+                return
+            buf = self._buffers.get(name)
+            if buf is None:
+                buf = deque()
+                self._buffers[name] = buf
+            buf.append((chunk.time, chunk.pcm))
+            cutoff = chunk.time - self.BUFFER_SECONDS
+            while buf and buf[0][0] < cutoff:
+                buf.popleft()
+
+    # ---- consent ------------------------------------------------------------
+    def loop(self):
+        now = time.monotonic()
+        if now - self._optin_at < self.OPTIN_REFRESH_SECS:
+            return
+        self._optin_at = now
+        self._refresh_optin()
+
+    def _refresh_optin(self):
+        try:
+            docs = self.mongo_interface.db.users.find(
+                {"capture_optin": True, "voice_id": {"$ne": None}},
+                {"voice_id": 1},
+            )
+            optin = {d.get("voice_id") for d in docs if d.get("voice_id")}
+        except Exception:
+            return
+        with self._lock:
+            self._optin = optin
+            # Someone who just opted out should have their buffered audio purged
+            # immediately, not linger for up to BUFFER_SECONDS.
+            for name in [n for n in self._buffers if n not in optin]:
+                del self._buffers[name]
+
+    # ---- events ------------------------------------------------------------
     def accept(self, event):
-        return isinstance(event, RecordEvent)
+        return isinstance(event, (RecordEvent, CaptureEvent))
 
     def dispatch(self, event):
-        if event.data == "start":
-            self._start_recording()
-        else:
-            self._stop_recording()
+        if isinstance(event, RecordEvent):
+            if event.data == "start":
+                self._start_recording()
+            else:
+                self._stop_recording()
+        elif isinstance(event, CaptureEvent):
+            self._capture(event)
 
-    def _start_recording(self):
-        now = dt.datetime.now()
-        date_format = "%Y%m%d%H%M%S"
-
-        self.is_recording = True
-        self.mumble_wrapper.set_receive_sound(True)
-        self.mumble_wrapper.start_recording()
-
-        for user_wrapper in self.mumble_wrapper.get_users():
-            user_name = user_wrapper.get_name()
-
-            file_name = "".join(
-                [user_name, "-mumble-", now.strftime(date_format), ".wav"]
+    # ---- "clip that" -------------------------------------------------------
+    def _capture(self, event):
+        target = event.target
+        duration = max(
+            1.0, min(float(event.duration or self.BUFFER_SECONDS), self.BUFFER_SECONDS)
+        )
+        with self._lock:
+            opted = target in self._optin
+            chunks = list(self._buffers.get(target, ())) if opted else []
+        if not opted:
+            self._announce(
+                "<b>{0}</b> hasn't opted in to being clipped.".format(target)
             )
-            path = self.recording_dir.joinpath(file_name)
+            return
+        pcm = self._render_window(chunks, duration) if chunks else b""
+        if not pcm:
+            self._announce(
+                "Nothing to clip for <b>{0}</b> (no recent audio)".format(target)
+            )
+            return
 
-            file = wave.open(path.as_posix(), "wb")
-            file.setparams((1, 2, BITRATE, 0, "NONE", "not compressed"))
-            self.files[user_name] = file
+        self.captures_dir.mkdir(parents=True, exist_ok=True)
+        stamp = dt.datetime.utcnow().strftime("%Y%m%d%H%M%S")
+        safe = re.sub(r"[^A-Za-z0-9_-]", "_", target) or "user"
+        filename = "cap_{0}_{1}.wav".format(stamp, safe)
+        path = self.captures_dir.joinpath(filename)
+        with wave.open(path.as_posix(), "wb") as f:
+            f.setparams((1, 2, self.SAMPLE_RATE, 0, "NONE", "not compressed"))
+            f.writeframes(pcm)
+
+        duration_s = round(len(pcm) / 2 / self.SAMPLE_RATE, 2)
+        try:
+            self.mongo_interface.db.pending_clips.insert_one(
+                {
+                    "target_voice": target,
+                    "requested_by": event.requested_by,
+                    "duration_s": duration_s,
+                    "file": "captures/" + filename,
+                    "created_at": dt.datetime.utcnow(),
+                    "status": "pending",
+                }
+            )
+        except Exception:
+            log.exception("failed to store pending capture for %s", target)
+            return
+
+        self._announce(
+            "<b>{0}</b> clipped the last {1:g}s of <b>{2}</b> — review it in the "
+            "web UI".format(event.requested_by or "web", duration_s, target)
+        )
+
+    def _render_window(self, chunks, duration):
+        """Lay the recent chunks onto a silence-filled canvas (so pauses are kept
+        as real silence), take the last ``duration`` seconds, then strip the outer
+        silence. Returns raw 48 kHz mono int16 PCM bytes."""
+        last_time, last_pcm = chunks[-1]
+        end = last_time + len(last_pcm) / 2 / self.SAMPLE_RATE
+        start = end - duration
+        canvas = bytearray(int(round(duration * self.SAMPLE_RATE)) * 2)
+
+        for ctime, pcm in chunks:
+            data = pcm
+            offset = int(round((ctime - start) * self.SAMPLE_RATE))
+            if offset < 0:
+                # chunk began before the window — drop its leading part
+                data = data[(-offset) * 2 :]
+                offset = 0
+            byte_off = offset * 2
+            if byte_off >= len(canvas) or not data:
+                continue
+            data = data[: len(canvas) - byte_off]
+            canvas[byte_off : byte_off + len(data)] = data
+
+        # Trim leading/trailing silence, keeping int16 sample alignment. lstrip/
+        # rstrip work byte-wise, so round the trimmed counts down to even bytes to
+        # avoid splitting a sample whose other byte happens to be zero.
+        left = len(canvas) - len(canvas.lstrip(b"\x00"))
+        left -= left % 2
+        canvas = canvas[left:]
+        right = len(canvas) - len(canvas.rstrip(b"\x00"))
+        right -= right % 2
+        if right:
+            canvas = canvas[:-right]
+        return bytes(canvas)
+
+    # ---- recording ---------------------------------------------------------
+    def _start_recording(self):
+        self.recording_dir.mkdir(parents=True, exist_ok=True)
+        self.mumble_wrapper.start_recording()  # flags the bot as recording (UI)
+        with self._lock:
+            self._record_stamp = dt.datetime.now().strftime("%Y%m%d%H%M%S")
+            self._record_files = {}
+            self.is_recording = True
 
     def _stop_recording(self):
+        with self._lock:
+            self.is_recording = False
+            files = self._record_files
+            self._record_files = {}
         self.mumble_wrapper.stop_recording()
-        self.mumble_wrapper.set_receive_sound(False)
-        self.is_recording = False
+        for f in files.values():
+            f.close()
 
-        for file in self.files.values():
-            file.close()
+    def _write_recording(self, name, pcm):
+        # Called under self._lock from on_sound. Files are opened lazily so a user
+        # who joins mid-recording still gets captured.
+        f = self._record_files.get(name)
+        if f is None:
+            file_name = "{0}-mumble-{1}.wav".format(name, self._record_stamp)
+            f = wave.open(self.recording_dir.joinpath(file_name).as_posix(), "wb")
+            f.setparams((1, 2, self.SAMPLE_RATE, 0, "NONE", "not compressed"))
+            self._record_files[name] = f
+        f.writeframes(pcm)
 
-        self.files = dict()
-
-    def _write(self, name, data):
-        self.files[name].writeframes(data)
-
-    def loop(self):
-        if self.is_recording:
-            for user_wrapper in self.mumble_wrapper.get_users():
-                if user_wrapper.is_sound():
-                    user_name = user_wrapper.get_name()
-                    sound = user_wrapper.get_sound()
-                    self._write(user_name, sound.pcm)
+    def _announce(self, message):
+        if self.text_message_manager is None:
+            return
+        try:
+            self.text_message_manager.process(ChannelTextEvent(message))
+        except Exception:
+            log.exception("capture announce failed")
 
 
 class CommandManager(EventManager):
     POLL_INTERVAL = 0.02
 
-    def __init__(self, mongo_interface, playback_manager, text_message_manager):
+    def __init__(
+        self,
+        mongo_interface,
+        playback_manager,
+        text_message_manager,
+        capture_manager=None,
+    ):
         self.mongo_interface = mongo_interface
         self.playback_manager = playback_manager
         self.text_message_manager = text_message_manager
+        self.capture_manager = capture_manager
         self._last_poll = 0
 
     def loop(self):
@@ -896,6 +1073,19 @@ class CommandManager(EventManager):
 
         if cmd_type == "skip_song":
             self.playback_manager.skip_song()
+            return
+
+        if cmd_type == "clip_capture":
+            # "Clip that": dump the last N seconds of a person's voice (held in the
+            # CaptureManager's rolling buffer) into a pending capture for review.
+            if self.capture_manager is not None:
+                self.capture_manager.process(
+                    CaptureEvent(
+                        command.get("target_voice"),
+                        command.get("duration", CaptureManager.BUFFER_SECONDS),
+                        command.get("requested_by"),
+                    )
+                )
             return
 
         if cmd_type == "join":

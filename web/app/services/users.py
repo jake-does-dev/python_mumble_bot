@@ -54,6 +54,18 @@ class UsersService:
             )
         return True
 
+    def set_capture_optin(self, username: str, opt_in: bool) -> bool:
+        # Consent to "clip that": when False (the default), the bot drops this
+        # user's audio entirely — it's never buffered, so it can't be clipped.
+        user = self.get_user(username)
+        if not user:
+            return False
+        self.db.users.update_one(
+            {"username": username},
+            {"$set": {"capture_optin": bool(opt_in)}},
+        )
+        return True
+
     def is_admin(self, username: str) -> bool:
         user = self.get_user(username)
         if not user:

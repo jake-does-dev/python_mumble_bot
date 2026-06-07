@@ -14,6 +14,7 @@ import VoicePanel from '../components/VoicePanel'
 import PadBoard from '../components/PadBoard'
 import HelpModal from '../components/HelpModal'
 import EntranceModal from '../components/EntranceModal'
+import ClipThatModal from '../components/ClipThatModal'
 import styles from './ClipsPage.module.css'
 
 const newId = () => Date.now().toString(36) + Math.random().toString(36).slice(2)
@@ -53,6 +54,7 @@ export default function ClipsPage() {
   const [error, setError] = useState(null)
   const [isAdmin, setIsAdmin] = useState(false)
   const [voiceControl, setVoiceControl] = useState(false)
+  const [clipCapture, setClipCapture] = useState(false)
   const [username, setUsername] = useState(null)
   const [presenceRequired, setPresenceRequired] = useState(false)
   const [voiceLinked, setVoiceLinked] = useState(false)
@@ -80,6 +82,7 @@ export default function ClipsPage() {
   const [droppedFile, setDroppedFile] = useState(null)
   const [helpOpen, setHelpOpen] = useState(false)
   const [entranceOpen, setEntranceOpen] = useState(false)
+  const [clipThatOpen, setClipThatOpen] = useState(false)
   const [tagsExpanded, setTagsExpanded] = useState(() => localStorage.getItem('pmb_tags_expanded') !== 'false')
 
   const [sidebarTab, setSidebarTab] = useState('history')
@@ -163,6 +166,7 @@ export default function ClipsPage() {
         setTags(tagsRes.data)
         setIsAdmin(meRes.data.is_admin)
         setVoiceControl(meRes.data.voice_control)
+        setClipCapture(meRes.data.clip_capture)
         setUsername(meRes.data.username)
         setPresenceRequired(meRes.data.presence_required)
         setVoiceLinked(meRes.data.voice_linked)
@@ -666,6 +670,7 @@ export default function ClipsPage() {
             {theme === 'dark' ? '☀' : '☾'}
           </button>
           <button className={styles.statsLink} onClick={() => setEntranceOpen(true)} title="Set the sound that plays when you join the bot's channel">🔔 Entrance</button>
+          {clipCapture && <button className={styles.statsLink} onClick={() => setClipThatOpen(true)} title="Clip the last 30s of someone's voice into a soundboard clip">✂️ Clip that</button>}
           <button className={styles.statsLink} onClick={() => setHelpOpen(true)} title="How to use the bot">❓ Help</button>
           <Link to="/stats" className={styles.statsLink}>📊 Stats</Link>
           {isAdmin && <Link to="/admin/users" className={styles.statsLink}>⚙ Users</Link>}
@@ -740,6 +745,7 @@ export default function ClipsPage() {
                 onClose={() => { setUploadOpen(false); setDroppedFile(null) }}
                 onUploaded={handleUploaded}
                 initialFile={droppedFile}
+                allTags={tags}
               />
             )}
             {voiceControl && <VoicePanel />}
@@ -866,6 +872,7 @@ export default function ClipsPage() {
                       picking={!!songPick}
                       selectedInstrument={songPick?.clipRef === clip.identifier}
                       onSelectInstrument={(c) => setSongPick(p => ({ ...p, clipRef: c.identifier, clipName: c.name }))}
+                      allTags={tags}
                     />
                   ))}
                 </div>
@@ -1048,6 +1055,13 @@ export default function ClipsPage() {
 
       {entranceOpen && (
         <EntranceModal clips={clips} onClose={() => setEntranceOpen(false)} />
+      )}
+      {clipThatOpen && (
+        <ClipThatModal
+          onClose={() => setClipThatOpen(false)}
+          onSaved={handleUploaded}
+          allTags={tags}
+        />
       )}
     </div>
   )
