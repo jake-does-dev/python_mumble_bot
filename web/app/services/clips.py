@@ -145,6 +145,63 @@ class ClipsService:
             updated += 1
         return updated
 
+    def renormalize_clip(self, clip: dict) -> bool:
+        """Loudness-normalise one clip's audio in place (to the same EBU R128
+        target as uploads), keeping a one-time backup of the original so it stays
+        revertable. Returns True on success."""
+        path = AUDIO_DIR / clip["file"]
+        if not path.exists():
+            return False
+
+        # Back up the very first original once (shared with the trim flow's
+        # `original_file`, so a clip already trimmed keeps its pre-trim backup).
+        original_file = clip.get("original_file")
+        if not original_file:
+            original_file = ".orig_" + clip["file"]
+            backup = AUDIO_DIR / original_file
+            if not backup.exists():
+                shutil.copy2(path, backup)
+
+        tmp = path.with_name(".norm_" + path.name)
+        result = subprocess.run(
+            ["ffmpeg", "-y", "-i", str(path), "-af", _LOUDNORM_FILTER,
+             "-ar", "48000", str(tmp)],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        if result.returncode != 0 or not tmp.exists():
+            if tmp.exists():
+                tmp.unlink()
+            return False
+        os.replace(tmp, path)  # atomic — a concurrent play gets old or new, never half
+
+        self.db.clips.update_one(
+            {"identifier": clip["identifier"]},
+            {"$set": {
+                "original_file": original_file,
+                "duration_s": _probe_duration(path),
+                "normalized": True,
+            }},
+        )
+        return True
+
+    def renormalize_all(self, force: bool = False) -> dict:
+        """One-off: loudness-normalise every clip so volumes are consistent
+        (most predate the UI upload's auto-normalisation). Idempotent — skips
+        clips already marked normalised unless ``force``. Returns counts."""
+        query = {} if force else {"normalized": {"$ne": True}}
+        clips = list(self.db.clips.find(query))
+        done = failed = 0
+        for clip in clips:
+            try:
+                if self.renormalize_clip(clip):
+                    done += 1
+                else:
+                    failed += 1
+            except Exception:
+                failed += 1
+        return {"normalized": done, "failed": failed, "total": len(clips)}
+
     def upload_clip(
         self,
         name: str,
