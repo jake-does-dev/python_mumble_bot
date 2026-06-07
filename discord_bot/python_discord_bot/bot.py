@@ -74,6 +74,14 @@ class DiscordBot(commands.Bot):
         self._song_signal = asyncio.Event()
         self._skip_event = asyncio.Event()
         self._song_worker_task = None
+        # Entrance sounds: play a user's configured clip when they join the
+        # bot's channel, debounced per user so quick rejoins don't spam.
+        self._entrance_cooldown = {}
+
+    ENTRANCE_COOLDOWN_SECS = 30
+    # Wait this long after someone joins before playing, so their client's audio
+    # is up and they hear the clip from the start (not just the tail).
+    ENTRANCE_DELAY_SECS = 2.0
 
     async def setup_hook(self):
         await asyncio.to_thread(self.mongo.connect)
@@ -282,20 +290,69 @@ class DiscordBot(commands.Bot):
             await channel.send(text)
 
     async def on_voice_state_update(self, member, before, after):
-        # When a human's voice state changes: leave if the bot is now alone in
-        # its channel, then republish so per-channel user counts stay fresh.
+        # When a human's voice state changes: play their entrance sound if they
+        # joined the bot's channel, leave if the bot is now alone, then republish
+        # so per-channel user counts stay fresh.
         if member.bot:
             return
         voice_client = member.guild.voice_client
         if voice_client is not None and voice_client.is_connected():
-            if not self._channel_has_humans(voice_client.channel):
+            bot_channel = voice_client.channel
+            joined_us = (
+                after.channel is not None
+                and after.channel.id == bot_channel.id
+                and (before.channel is None or before.channel.id != bot_channel.id)
+            )
+            if joined_us:
+                await self._maybe_play_entrance(member, voice_client)
+            if not self._channel_has_humans(bot_channel):
                 log.info(
                     "Auto-leave: %s has no humans left; disconnecting",
-                    voice_client.channel.name,
+                    bot_channel.name,
                 )
                 await voice_client.disconnect()
                 await self._set_rejoin(None)  # don't rejoin an abandoned channel
         await self._publish_voice_state()
+
+    async def _maybe_play_entrance(self, member, voice_client):
+        now = time.monotonic()
+        if now - self._entrance_cooldown.get(member.id, 0) < self.ENTRANCE_COOLDOWN_SECS:
+            return
+        doc = await asyncio.to_thread(
+            lambda: self.mongo.db.entrance_sounds.find_one({"_id": str(member.id)})
+        )
+        clips = (doc or {}).get("clips") or []
+        if not clips:
+            return
+        self._entrance_cooldown[member.id] = now
+        # Give the joiner's client a moment to finish setting up its audio
+        # receive stream, otherwise they miss the first second of the clip.
+        await asyncio.sleep(self.ENTRANCE_DELAY_SECS)
+        # They may have bounced straight back out, or the bot moved/left.
+        if not voice_client.is_connected():
+            return
+        if member.voice is None or member.voice.channel != voice_client.channel:
+            return
+        log.info("Playing entrance for %s (%d clips)", member.display_name, len(clips))
+        player = self.get_player(voice_client)
+        voice_key = "entrance-{0}".format(member.id)
+        base_volume = await asyncio.to_thread(self.mongo.get_volume)
+        for c in clips:
+            doc = await asyncio.to_thread(self.resolve_clip, c["clip_ref"])
+            if doc is None:
+                continue
+            volume = base_volume * transform.gain_db_to_multiplier(doc.get("gain_db", 0))
+            source = playback.build_source(
+                doc["file"], float(c.get("speed", 1.0)), float(c.get("pitch", 0)), volume
+            )
+            done = asyncio.Event()
+            player.play_now(
+                voice_key, source, lambda: self.loop.call_soon_threadsafe(done.set)
+            )
+            try:
+                await asyncio.wait_for(done.wait(), timeout=30.0)
+            except asyncio.TimeoutError:
+                pass
 
     @tasks.loop(seconds=0.1)
     async def poll_commands(self):

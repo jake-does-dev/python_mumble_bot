@@ -1,4 +1,7 @@
+import datetime as dt
+import logging
 import os
+import re
 import time
 
 import pymumble_py3 as pymumble
@@ -13,6 +16,7 @@ from python_mumble_bot.bot.constants import (
     USER_GREETINGS_DICT,
     USERNAME_DICT,
 )
+from python_mumble_bot.bot.event import AudioEvent
 from python_mumble_bot.bot.manager import (
     CommandManager,
     PlaybackManager,
@@ -21,6 +25,8 @@ from python_mumble_bot.bot.manager import (
     TextMessageManager,
     VoiceStateManager,
 )
+
+log = logging.getLogger("pmb.mumble.client")
 
 
 def connect():
@@ -47,6 +53,9 @@ class Client:
     COMMAND_MANAGER = "COMMAND_MANAGER"
     VOICE_STATE_MANAGER = "VOICE_STATE_MANAGER"
 
+    # Don't replay someone's entrance sound if they bounce in and out quickly.
+    ENTRANCE_COOLDOWN_SECS = 30
+
     def __init__(
         self,
         mumble,
@@ -58,6 +67,7 @@ class Client:
         self.mumble = mumble
         self.command_resolver = CommandResolver()
         self.managers = dict()
+        self._entrance_cooldown = {}  # voice name -> last-played monotonic time
 
         state_manager = (
             StateManager(MongoInterface()) if state_manager is None else state_manager
@@ -126,24 +136,116 @@ class Client:
                 manager.process(event)
 
     def user_updated_command(self, user_event, incoming):
+        # A user moved channel — play their entrance if they moved into ours.
         if {"actor", "channel_id"} == incoming.keys() and self.mumble.my_channel()[
             "channel_id"
         ] == user_event.get("channel_id"):
-            self._send_delayed_greeting(user_event.get("name"))
+            self._play_entrance(user_event.get("name"))
 
     def user_created_command(self, user_event):
-        self._send_delayed_greeting(user_event.get("name"))
+        # A user connected — play their entrance only if they landed in our channel.
+        try:
+            in_our_channel = self.mumble.my_channel()["channel_id"] == user_event.get(
+                "channel_id"
+            )
+        except Exception:
+            in_our_channel = False
+        if in_our_channel:
+            self._play_entrance(user_event.get("name"))
 
-    def _send_delayed_greeting(self, user):
-        if user in USERNAME_DICT.keys():
-            greetings = USER_GREETINGS_DICT[USERNAME_DICT[user]]
-            for greeting in greetings:
-                self.interpret_command(Greeting(user, "/pmb play {0}".format(greeting)))
+    def _play_entrance(self, user):
+        """Play the user's configured entrance sound (from `entrance_sounds`)
+        when they join the bot's channel. Replaces the old hardcoded greeting
+        dicts; debounced so quick rejoins don't spam."""
+        if not user:
+            return
+        now = time.monotonic()
+        if now - self._entrance_cooldown.get(user, 0) < self.ENTRANCE_COOLDOWN_SECS:
+            return
+        try:
+            doc = self.managers[
+                self.STATE_MANAGER
+            ].mongo_interface.db.entrance_sounds.find_one({"_id": user})
+        except Exception:
+            doc = None
+        clips = (doc or {}).get("clips") or []
+        if not clips:
+            return
+        self._entrance_cooldown[user] = now
+        refs = [c["clip_ref"] for c in clips]
+        speeds = ["{0}x".format(c.get("speed", 1.0)) for c in clips]
+        shifts = ["{0}s".format(int(c.get("pitch", 0))) for c in clips]
+        event = AudioEvent(
+            refs, speeds, shifts, voice_key="entrance-{0}".format(user), append=False
+        )
+        self.managers[self.PLAYBACK_MANAGER].process(event)
+
+    def _seed_entrance_from_legacy(self):
+        """One-off, idempotent migration of the old hardcoded greeting dicts
+        into `entrance_sounds`. Only fills users with no doc yet, so it never
+        clobbers a web-configured entrance."""
+        try:
+            db = self.managers[self.STATE_MANAGER].mongo_interface.db
+        except Exception:
+            return
+        for mumble_name, key in USERNAME_DICT.items():
+            try:
+                if db.entrance_sounds.find_one({"_id": mumble_name}):
+                    continue
+                clips = []
+                for greeting in USER_GREETINGS_DICT.get(key) or []:
+                    parsed = self._parse_legacy_greeting(db, greeting)
+                    if parsed:
+                        clips.append(parsed)
+                if clips:
+                    db.entrance_sounds.replace_one(
+                        {"_id": mumble_name},
+                        {
+                            "_id": mumble_name,
+                            "voice_id": mumble_name,
+                            "clips": clips,
+                            "updated_by": "migration",
+                            "updated_at": dt.datetime.utcnow(),
+                        },
+                        upsert=True,
+                    )
+                    log.info(
+                        "Seeded entrance for %s (%d clips)", mumble_name, len(clips)
+                    )
+            except Exception:
+                log.exception("entrance seed failed for %s", mumble_name)
+
+    @staticmethod
+    def _parse_legacy_greeting(db, text):
+        """Parse a legacy greeting string like "0.8x dg15" or "bot_hello_jake"
+        into {clip_ref, clip_name, speed, pitch}, resolving names to refs."""
+        speed, pitch, clip_token = 1.0, 0, None
+        for tok in text.split():
+            if re.fullmatch(r"\d+(\.\d+)?x", tok):
+                speed = float(tok[:-1])
+            elif re.fullmatch(r"-?\d+s", tok):
+                pitch = int(tok[:-1])
+            else:
+                clip_token = tok
+        if not clip_token:
+            return None
+        clip = db.clips.find_one({"identifier": clip_token}) or db.clips.find_one(
+            {"name": clip_token}
+        )
+        if not clip:
+            return None
+        return {
+            "clip_ref": clip["identifier"],
+            "clip_name": clip["name"],
+            "speed": speed,
+            "pitch": pitch,
+        }
 
     def start(self):
         self.mumble.start()
         self.mumble.is_ready()
         self.managers[self.STATE_MANAGER].refresh_state()
+        self._seed_entrance_from_legacy()
 
     def loop(self):
         while self.mumble.is_alive():
