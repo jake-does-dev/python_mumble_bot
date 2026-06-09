@@ -38,6 +38,7 @@ services:
       DISCORD_BOT_TOKEN: ${DISCORD_BOT_TOKEN}
       DISCORD_GUILD_ID: ${DISCORD_GUILD_ID}
       DISCORD_ANNOUNCE_CHANNEL_ID: ${DISCORD_ANNOUNCE_CHANNEL_ID}
+      CLIP_CAPTURE_ENABLED: "true"
     volumes:
     - /tank/pmb/discord-audio:/app/audio
 
@@ -77,6 +78,7 @@ services:
       JWT_SECRET_KEY: ${DISCORD_JWT_SECRET_KEY}
       CLIP_ID_MODE: integer
       VOICE_CONTROL_ENABLED: "true"
+      CLIP_CAPTURE_ENABLED: "true"
       APP_TITLE: "Discord Bot"
       NORMALIZE_UPLOADS: "true"
       PLAY_REQUIRES_PRESENCE: "true"
