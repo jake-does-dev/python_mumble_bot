@@ -254,6 +254,7 @@ class DiscordBot(commands.Bot):
 
     CAPTURE_BUFFER_SECONDS = 30
     CAPTURE_SAMPLE_RATE = 48000  # discord-ext-voice-recv decodes to 48kHz
+    CAPTURE_ALL = "__all__"  # sentinel target: mix everyone opted-in
 
     async def setup_hook(self):
         await asyncio.to_thread(self.mongo.connect)
@@ -360,32 +361,48 @@ class DiscordBot(commands.Bot):
                 self.CAPTURE_BUFFER_SECONDS,
             ),
         )
-        with self._capture_lock:
-            opted = target in self._capture_optin
-            # Render on the audio timeline (2nd tuple element), not arrival time.
-            chunks = (
-                [
-                    (audio_t, pcm)
-                    for (_now, audio_t, pcm) in self._capture_buffers.get(target, ())
-                ]
-                if opted
-                else []
-            )
-        if not opted:
-            await self.announce(
-                "<b>{0}</b> hasn't opted in to being clipped.".format(target)
-            )
-            return
-        pcm = self._render_capture_window(chunks, duration) if chunks else b""
+
+        if target == self.CAPTURE_ALL:
+            # Mix everyone opted-in (buffers only ever hold opted-in users).
+            with self._capture_lock:
+                buffers = {
+                    uid: list(buf)
+                    for uid, buf in self._capture_buffers.items()
+                    if uid in self._capture_optin and buf
+                }
+            pcm = self._render_capture_mix(buffers, duration) if buffers else b""
+            label = "everyone"
+        else:
+            with self._capture_lock:
+                opted = target in self._capture_optin
+                # Render on the audio timeline (2nd tuple element), not arrival.
+                chunks = (
+                    [
+                        (audio_t, pcm)
+                        for (_now, audio_t, pcm) in self._capture_buffers.get(
+                            target, ()
+                        )
+                    ]
+                    if opted
+                    else []
+                )
+            if not opted:
+                await self.announce(
+                    "<b>{0}</b> hasn't opted in to being clipped.".format(target)
+                )
+                return
+            pcm = self._render_capture_window(chunks, duration) if chunks else b""
+            label = target
+
         if not pcm:
             await self.announce(
-                "Nothing to clip for <b>{0}</b> (no recent audio).".format(target)
+                "Nothing to clip for <b>{0}</b> (no recent audio).".format(label)
             )
             return
         info = await asyncio.to_thread(self._write_capture, target, pcm, requested_by)
         await self.announce(
             "<b>{0}</b> clipped the last {1:g}s of <b>{2}</b> — review it in the "
-            "web UI".format(requested_by or "web", info["duration_s"], target)
+            "web UI".format(requested_by or "web", info["duration_s"], label)
         )
 
     # Concatenate frames back-to-back; only insert real silence for genuine
@@ -432,6 +449,67 @@ class DiscordBot(commands.Bot):
         if right:
             out = out[:-right]
         return bytes(out)
+
+    def _render_capture_mix(self, buffers, duration):
+        """Mix every opted-in user's last ``duration`` seconds into one track.
+
+        Each Discord speaker's RTP clock is independent, so we map each user's
+        audio time onto the shared arrival clock via their median (arrival −
+        audio) offset — this lines speakers up with each other. Within a user,
+        frames are laid in contiguous runs (split only on real pauses) to avoid
+        the short-frame slivers that click. Overlapping speech sums (audioop.add
+        saturates, so it won't wrap). Returns 48kHz mono int16 PCM."""
+        sr = self.CAPTURE_SAMPLE_RATE
+        runs = []  # (canvas_start_seconds, pcm bytes)
+        global_end = None
+        for chunks in buffers.values():
+            if not chunks:
+                continue
+            offs = sorted(now - at for (now, at, _pcm) in chunks)
+            offset = offs[len(offs) // 2]  # audio-clock → arrival-clock
+            cur = bytearray()
+            cur_start = None
+            prev_end = None
+            for _now, at, pcm in chunks:
+                ct = at + offset
+                if prev_end is None or (ct - prev_end) > self.CAPTURE_PAUSE_GAP:
+                    if cur:
+                        runs.append((cur_start, bytes(cur)))
+                    cur = bytearray(pcm)
+                    cur_start = ct
+                else:
+                    cur += pcm
+                prev_end = ct + len(pcm) / 2 / sr
+            if cur:
+                runs.append((cur_start, bytes(cur)))
+            if prev_end is not None:
+                global_end = (
+                    prev_end if global_end is None else max(global_end, prev_end)
+                )
+
+        if global_end is None or not runs:
+            return b""
+        start = global_end - duration
+        canvas = bytearray(int(round(duration * sr)) * 2)
+        for cstart, pcm in runs:
+            off = int(round((cstart - start) * sr))
+            if off < 0:  # run straddles the window start — trim its lead-in
+                pcm = pcm[(-off) * 2 :]
+                off = 0
+            byte_off = off * 2
+            if byte_off >= len(canvas) or not pcm:
+                continue
+            seg = pcm[: len(canvas) - byte_off]
+            end_b = byte_off + len(seg)
+            canvas[byte_off:end_b] = audioop.add(bytes(canvas[byte_off:end_b]), seg, 2)
+
+        left = len(canvas) - len(canvas.lstrip(b"\x00"))
+        canvas = canvas[left - (left % 2) :]
+        right = len(canvas) - len(canvas.rstrip(b"\x00"))
+        right -= right % 2
+        if right:
+            canvas = canvas[:-right]
+        return bytes(canvas)
 
     def _write_capture(self, target, pcm, requested_by):
         captures_dir = playback.AUDIO_DIR / "captures"
@@ -669,6 +747,8 @@ class DiscordBot(commands.Bot):
         await self._publish_voice_state()
 
     async def _maybe_play_entrance(self, member, voice_client):
+        if not config.ENTRANCE_ENABLED:
+            return  # entrance sounds disabled on this bot
         now = time.monotonic()
         if (
             now - self._entrance_cooldown.get(member.id, 0)

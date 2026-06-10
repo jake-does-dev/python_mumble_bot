@@ -128,6 +128,18 @@ export default function ClipThatModal({ onClose, onSaved, allTags = [] }) {
             </div>
 
             <h3 className={styles.section}>In the channel</h3>
+            {present.filter(p => p.opted_in).length >= 2 && (
+              <button
+                className={styles.clipAllBtn}
+                disabled={busy === '__all__'}
+                onClick={() => clipThat('__all__')}
+                title="Mix everyone opted-in into one clip — great for an exchange between people"
+              >
+                {busy === '__all__'
+                  ? '…'
+                  : `✂️ Clip everyone (last ${CAPTURE_SECONDS}s)`}
+              </button>
+            )}
             {present.length === 0 ? (
               <p className={styles.empty}>Nobody’s in the bot’s channel right now.</p>
             ) : (
@@ -264,7 +276,9 @@ function CaptureReview({ cap, onDone, onToast, onSaved, allTags = [] }) {
   return (
     <li className={styles.item}>
       <div className={styles.itemTop}>
-        <span className={styles.itemName}>{cap.target_voice}</span>
+        <span className={styles.itemName}>
+          {cap.target_voice === '__all__' ? 'Everyone' : cap.target_voice}
+        </span>
         <span className={styles.itemMeta}>
           {cap.duration_s ? `${cap.duration_s}s` : ''}
           {cap.requested_by ? ` · by ${cap.requested_by}` : ''}

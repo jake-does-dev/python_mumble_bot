@@ -26,3 +26,11 @@ CLIP_CAPTURE_ENABLED = os.getenv("CLIP_CAPTURE_ENABLED", "").lower() in (
     "true",
     "yes",
 )
+
+# Entrance sounds (play a user's configured clip when they join the bot's
+# channel). On by default; set ENTRANCE_ENABLED=false to turn it off for a stack.
+ENTRANCE_ENABLED = os.getenv("ENTRANCE_ENABLED", "true").lower() in (
+    "1",
+    "true",
+    "yes",
+)

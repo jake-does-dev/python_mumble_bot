@@ -39,6 +39,7 @@ services:
       DISCORD_GUILD_ID: ${DISCORD_GUILD_ID}
       DISCORD_ANNOUNCE_CHANNEL_ID: ${DISCORD_ANNOUNCE_CHANNEL_ID}
       CLIP_CAPTURE_ENABLED: "true"
+      ENTRANCE_ENABLED: "false"
     volumes:
     - /tank/pmb/discord-audio:/app/audio
 
@@ -79,6 +80,7 @@ services:
       CLIP_ID_MODE: integer
       VOICE_CONTROL_ENABLED: "true"
       CLIP_CAPTURE_ENABLED: "true"
+      ENTRANCE_ENABLED: "false"
       APP_TITLE: "Discord Bot"
       NORMALIZE_UPLOADS: "true"
       PLAY_REQUIRES_PRESENCE: "true"

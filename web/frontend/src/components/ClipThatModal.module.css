@@ -142,6 +142,24 @@
   white-space: nowrap;
 }
 
+.clipAllBtn {
+  width: 100%;
+  border: 1px solid var(--accent-border);
+  background: var(--accent);
+  color: #fff;
+  font-weight: 600;
+  font-size: 0.85rem;
+  padding: 0.5rem 0.7rem;
+  border-radius: 6px;
+  cursor: pointer;
+  margin-bottom: 0.5rem;
+}
+
+.clipAllBtn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
 .clipBtn:hover:not(:disabled) {
   background: var(--accent);
   color: #fff;
