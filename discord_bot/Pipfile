@@ -8,6 +8,7 @@ python_version = "3.10"
 
 [packages]
 "discord.py" = {extras = ["voice"], version = ">=2.3"}
+"discord-ext-voice-recv" = "*"
 pymongo = "==3.12.0"
 
 [dev-packages]

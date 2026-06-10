@@ -25,6 +25,13 @@ CLIP_CAPTURE_ENABLED = os.getenv("CLIP_CAPTURE_ENABLED", "").lower() in (
     "true",
     "yes",
 )
+# Entrance sounds. On by default; the Discord stack sets ENTRANCE_ENABLED=false
+# to hide the UI control (its bot also won't play them).
+ENTRANCE_ENABLED = os.getenv("ENTRANCE_ENABLED", "true").lower() in (
+    "1",
+    "true",
+    "yes",
+)
 
 router = APIRouter(prefix="/api/users", tags=["users"])
 
@@ -65,6 +72,7 @@ def me(current_user: str = Depends(get_current_user)):
         "is_admin": users_service.is_admin(current_user),
         "voice_control": VOICE_CONTROL_ENABLED,
         "clip_capture": CLIP_CAPTURE_ENABLED,
+        "entrance_enabled": ENTRANCE_ENABLED,
         "presence_required": PLAY_REQUIRES_PRESENCE,
         "voice_linked": bool(user.get("voice_id")),
         "voice_name": user.get("voice_name"),

@@ -1,12 +1,17 @@
 import asyncio
+import audioop
 import datetime
 import logging
 import random
+import re
+import threading
 import time
+import wave
+from collections import deque
 
 import discord
 from discord import app_commands
-from discord.ext import commands, tasks
+from discord.ext import commands, tasks, voice_recv
 from pmb_core.audio import transform
 from pmb_core.db.mongodb import MongoInterface
 
@@ -39,12 +44,170 @@ async def ensure_voice(interaction):
     if voice_state is None or voice_state.channel is None:
         return None
     channel = voice_state.channel
+    bot = interaction.client
     voice_client = interaction.guild.voice_client
     if voice_client is None:
-        return await channel.connect()
+        return await bot._connect_voice(channel)
     if voice_client.channel != channel:
         await voice_client.move_to(channel)
+    bot._start_listening(voice_client)
     return voice_client
+
+
+def _patch_voice_recv_decode():
+    """Two fixes to discord-ext-voice-recv so it can capture E2EE voice:
+
+    1. **DAVE (E2EE).** Discord voice is end-to-end encrypted by default — the
+       opus payload is MLS-encrypted *inside* the transport encryption, and
+       voice-recv only strips the transport layer (leaving opus as noise). We
+       MLS-decrypt each sender's frame using the session discord.py already
+       maintains (the bot is a real group member), keeping E2EE intact.
+
+       Crucially this is done **in network-arrival order**, inside the socket
+       callback's transport-decrypt step (``decrypt_rtp``), *before* voice-recv's
+       jitter buffer reorders packets. The MLS media ratchet is order-sensitive,
+       so decrypting after reordering corrupts ~3% of frames. Passthrough mode is
+       kept on (discord.py only enables it transiently) so davey decrypts the
+       encrypted frames and passes Discord's occasional un-E2EE frames through.
+    2. **Resilience.** voice-recv tears down the *entire* receive loop on a single
+       decode error. We skip a bad packet (opus PLC conceals the gap) instead.
+    """
+    from discord.ext.voice_recv import opus as _vr_opus
+    from discord.ext.voice_recv import reader as _vr_reader
+
+    if getattr(_vr_opus.PacketDecoder, "_pmb_patched", False):
+        return
+
+    try:
+        import davey
+    except Exception:  # noqa: BLE001
+        davey = None
+
+    stats = {"dave_ok": 0, "dave_skip": 0, "dave_fail": 0, "ok": 0, "opus_fail": 0}
+    pt = {"sess": None, "t": 0.0}
+    # Sentinel for "this frame is lost/undecryptable" — conceal it downstream
+    # rather than feeding opus ciphertext (which decodes into static).
+    LOST = b"\x00LOST"
+
+    # --- 1. DAVE-decrypt in arrival order, wrapping each reader's decrypt_rtp ---
+    _orig_reader_init = _vr_reader.AudioReader.__init__
+
+    def _reader_init(self, sink, voice_client, **kwargs):
+        _orig_reader_init(self, sink, voice_client, **kwargs)
+        if davey is None:
+            return
+        decryptor = self.decryptor
+        _orig_decrypt_rtp = decryptor.decrypt_rtp
+
+        def _decrypt_rtp(packet):
+            data = _orig_decrypt_rtp(packet)  # transport decryption (unchanged)
+            # Strip RTP padding (RFC3550 §5.1) — Discord sets the padding bit and
+            # voice_recv doesn't remove it, so the trailing padding bytes corrupt
+            # the DAVE-decrypt input → static. The P bit is in the cleartext
+            # header; the final decrypted byte is the padding length.
+            # (Mirrors discord.js fix discordjs/discord.js#11449.)
+            if data and getattr(packet, "padding", False):
+                pad = data[-1]
+                if 0 < pad <= len(data):
+                    data = data[:-pad]
+            conn = getattr(voice_client, "_connection", None)
+            sess = getattr(conn, "dave_session", None)
+            if sess is None or getattr(conn, "dave_protocol_version", 0) <= 0:
+                return data  # E2EE not active — plain opus already
+            uid = voice_client._get_id_from_ssrc(packet.ssrc)
+            if uid is None:
+                stats["dave_skip"] += 1
+                return LOST  # sender unmapped yet — conceal, don't leak ciphertext
+            # Keep passthrough on (discord.py only enables it transiently) so davey
+            # returns Discord's occasional un-E2EE frames as plain opus instead of
+            # erroring. Re-assert often, since it lapses.
+            now = time.monotonic()
+            if sess is not pt["sess"] or now - pt["t"] > 1:
+                try:
+                    sess.set_passthrough_mode(True)
+                except Exception:  # noqa: BLE001
+                    pass
+                pt["sess"], pt["t"] = sess, now
+            try:
+                out = sess.decrypt(int(uid), davey.MediaType.audio, bytes(data))
+                stats["dave_ok"] += 1
+                if not pt.get("logged_e2ee"):
+                    pt["logged_e2ee"] = True
+                    log.info(
+                        "E2EE voice active: DAVE protocol v%s, outgoing-encrypted=%s",
+                        getattr(conn, "dave_protocol_version", 0),
+                        getattr(conn, "can_encrypt", False),
+                    )
+                return out
+            except Exception as e:  # noqa: BLE001
+                stats["dave_fail"] += 1
+                if stats["dave_fail"] <= 5:
+                    log.info("DAVE decrypt fail #%d: %r", stats["dave_fail"], e)
+                return LOST  # undecryptable — conceal (NOT ciphertext → no static)
+
+        decryptor.decrypt_rtp = _decrypt_rtp
+
+    _vr_reader.AudioReader.__init__ = _reader_init
+
+    # --- 2. Resilient opus decode (data is already DAVE-decrypted by now) ------
+    _orig_decode = _vr_opus.PacketDecoder._decode_packet
+
+    def _plc(self):
+        try:
+            return self._decoder.decode(None, fec=False)
+        except Exception:  # noqa: BLE001
+            return b""
+
+    def _decode_packet(self, packet):
+        # A frame we couldn't decrypt → conceal with PLC, never decode ciphertext.
+        if packet and getattr(packet, "decrypted_data", None) in (LOST, b""):
+            stats["opus_fail"] += 1
+            return packet, _plc(self)
+        try:
+            result = _orig_decode(self, packet)
+            if packet:
+                stats["ok"] += 1
+            return result
+        except Exception:  # noqa: BLE001
+            stats["opus_fail"] += 1
+            return packet, _plc(self)
+
+    _vr_opus.PacketDecoder._decode_packet = _decode_packet
+    _vr_opus.PacketDecoder._pmb_patched = True
+
+
+_patch_voice_recv_decode()
+
+
+class _CaptureSink(voice_recv.AudioSink):
+    """Feeds the bot's rolling per-user buffer from received voice.
+
+    discord.py can't receive voice on its own — this uses discord-ext-voice-recv,
+    which decodes each speaker's Opus into 20ms 48kHz **stereo** PCM frames. We
+    downmix to mono (to match the clip pipeline) and hand them to the bot, which
+    keeps only opted-in users' audio. Runs on the library's receive thread.
+    """
+
+    def __init__(self, bot):
+        super().__init__()
+        self.bot = bot
+
+    def wants_opus(self):
+        return False  # give us decoded PCM, not raw Opus
+
+    def write(self, user, data):
+        if user is None or getattr(user, "bot", False):
+            return
+        pcm = data.pcm
+        if not pcm:
+            return
+        # RTP timestamp (48kHz sample clock) is the true audio timeline. The
+        # library delivers frames in bursts, so arrival time would pile them up.
+        ts = getattr(data.packet, "timestamp", None)
+        self.bot._capture_write(str(user.id), ts, audioop.tomono(pcm, 2, 0.5, 0.5))
+
+    def cleanup(self):
+        pass
 
 
 def _chunk_lines(lines, limit):
@@ -77,11 +240,21 @@ class DiscordBot(commands.Bot):
         # Entrance sounds: play a user's configured clip when they join the
         # bot's channel, debounced per user so quick rejoins don't spam.
         self._entrance_cooldown = {}
+        # "Clip that" rolling buffers: voice_id (str(member.id)) -> deque of
+        # (monotonic time, mono 48kHz PCM). Only opted-in users are held; the
+        # sink runs on a receive thread, so guard with a lock.
+        self._capture_buffers = {}
+        self._capture_optin = set()
+        self._capture_lock = threading.Lock()
 
     ENTRANCE_COOLDOWN_SECS = 30
     # Wait this long after someone joins before playing, so their client's audio
     # is up and they hear the clip from the start (not just the tail).
     ENTRANCE_DELAY_SECS = 2.0
+
+    CAPTURE_BUFFER_SECONDS = 30
+    CAPTURE_SAMPLE_RATE = 48000  # discord-ext-voice-recv decodes to 48kHz
+    CAPTURE_ALL = "__all__"  # sentinel target: mix everyone opted-in
 
     async def setup_hook(self):
         await asyncio.to_thread(self.mongo.connect)
@@ -98,6 +271,8 @@ class DiscordBot(commands.Bot):
         self._song_worker_task = self.loop.create_task(self._song_worker())
         self.poll_commands.start()
         self.publish_voice_state.start()
+        if config.CLIP_CAPTURE_ENABLED:
+            self.refresh_capture_optin.start()
 
     def get_player(self, voice_client):
         player = self.players.get(voice_client.guild.id)
@@ -109,6 +284,256 @@ class DiscordBot(commands.Bot):
         player.start(self.loop)
         return player
 
+    # ---- voice connect + receive ------------------------------------------
+    async def _connect_voice(self, channel):
+        """Connect to a voice channel. With capture on, use the receive-capable
+        client (a VoiceClient superset, so playback is unaffected) and start the
+        rolling-buffer listener."""
+        cls = (
+            voice_recv.VoiceRecvClient
+            if config.CLIP_CAPTURE_ENABLED
+            else discord.VoiceClient
+        )
+        voice_client = await channel.connect(cls=cls)
+        self._start_listening(voice_client)
+        return voice_client
+
+    def _start_listening(self, voice_client):
+        if not config.CLIP_CAPTURE_ENABLED or voice_client is None:
+            return
+        try:
+            if not voice_client.is_listening():
+                voice_client.listen(_CaptureSink(self))
+        except Exception:
+            log.exception("Failed to start voice capture listener")
+
+    # ---- "clip that" rolling buffer ---------------------------------------
+    def _capture_write(self, name, ts, mono_pcm):
+        """Append a mono PCM frame to a user's rolling buffer (opted-in only).
+        Stored as (arrival_monotonic, audio_time_seconds, pcm): we evict by
+        arrival time (a true wall-clock window, wrap-safe) but place frames by the
+        RTP audio time. Called from the receive thread."""
+        if ts is None:
+            return
+        now = time.monotonic()
+        audio_t = ts / float(self.CAPTURE_SAMPLE_RATE)
+        with self._capture_lock:
+            if name not in self._capture_optin:
+                return  # not consented — dropped, never stored
+            buf = self._capture_buffers.get(name)
+            if buf is None:
+                buf = deque()
+                self._capture_buffers[name] = buf
+                log.info("capture: receiving audio for %s", name)
+            buf.append((now, audio_t, mono_pcm))
+            cutoff = now - self.CAPTURE_BUFFER_SECONDS
+            while buf and buf[0][0] < cutoff:
+                buf.popleft()
+
+    @tasks.loop(seconds=5)
+    async def refresh_capture_optin(self):
+        docs = await asyncio.to_thread(
+            lambda: list(
+                self.mongo.db.users.find(
+                    {"capture_optin": True, "voice_id": {"$ne": None}},
+                    {"voice_id": 1},
+                )
+            )
+        )
+        optin = {d.get("voice_id") for d in docs if d.get("voice_id")}
+        with self._capture_lock:
+            self._capture_optin = optin
+            # Purge buffers for anyone who just opted out (don't keep their audio).
+            for name in [n for n in self._capture_buffers if n not in optin]:
+                del self._capture_buffers[name]
+
+    @refresh_capture_optin.before_loop
+    async def _before_optin(self):
+        await self.wait_until_ready()
+
+    async def _capture_clip(self, command):
+        target = command.get("target_voice")
+        requested_by = command.get("requested_by")
+        duration = max(
+            1.0,
+            min(
+                float(command.get("duration") or self.CAPTURE_BUFFER_SECONDS),
+                self.CAPTURE_BUFFER_SECONDS,
+            ),
+        )
+
+        if target == self.CAPTURE_ALL:
+            # Mix everyone opted-in (buffers only ever hold opted-in users).
+            with self._capture_lock:
+                buffers = {
+                    uid: list(buf)
+                    for uid, buf in self._capture_buffers.items()
+                    if uid in self._capture_optin and buf
+                }
+            pcm = self._render_capture_mix(buffers, duration) if buffers else b""
+            label = "everyone"
+        else:
+            with self._capture_lock:
+                opted = target in self._capture_optin
+                # Render on the audio timeline (2nd tuple element), not arrival.
+                chunks = (
+                    [
+                        (audio_t, pcm)
+                        for (_now, audio_t, pcm) in self._capture_buffers.get(
+                            target, ()
+                        )
+                    ]
+                    if opted
+                    else []
+                )
+            if not opted:
+                await self.announce(
+                    "<b>{0}</b> hasn't opted in to being clipped.".format(target)
+                )
+                return
+            pcm = self._render_capture_window(chunks, duration) if chunks else b""
+            label = target
+
+        if not pcm:
+            await self.announce(
+                "Nothing to clip for <b>{0}</b> (no recent audio).".format(label)
+            )
+            return
+        info = await asyncio.to_thread(self._write_capture, target, pcm, requested_by)
+        await self.announce(
+            "<b>{0}</b> clipped the last {1:g}s of <b>{2}</b> — review it in the "
+            "web UI".format(requested_by or "web", info["duration_s"], label)
+        )
+
+    # Concatenate frames back-to-back; only insert real silence for genuine
+    # pauses (a timestamp gap bigger than this). Smaller gaps come from the
+    # occasional short (10ms) opus frame in a 20ms slot — concatenating those
+    # contiguously avoids the silent slivers that click.
+    CAPTURE_PAUSE_GAP = 0.12
+    CAPTURE_MAX_PAUSE = 1.5
+
+    def _render_capture_window(self, chunks, duration):
+        """Rebuild the last ``duration`` seconds by concatenating the frames in
+        order, inserting silence only for real pauses. Returns 48kHz mono int16
+        PCM bytes."""
+        sr = self.CAPTURE_SAMPLE_RATE
+        chunks = sorted(chunks, key=lambda c: c[0])
+        end = chunks[-1][0] + len(chunks[-1][1]) / 2 / sr
+        start = end - duration
+
+        out = bytearray()
+        prev_end = None
+        for ctime, pcm in chunks:
+            frame_end = ctime + len(pcm) / 2 / sr
+            if frame_end <= start:
+                continue  # entirely before the window
+            if ctime < start:  # straddles the window start — trim its lead-in
+                drop = int(round((start - ctime) * sr)) * 2
+                pcm = pcm[drop:]
+                ctime = start
+            if not pcm:
+                continue
+            if prev_end is not None:
+                gap = ctime - prev_end
+                if gap > self.CAPTURE_PAUSE_GAP:
+                    pad = int(round(min(gap, self.CAPTURE_MAX_PAUSE) * sr)) * 2
+                    out += b"\x00" * pad
+            out += pcm
+            prev_end = ctime + len(pcm) / 2 / sr
+
+        # Trim outer silence (sample-aligned).
+        left = len(out) - len(out.lstrip(b"\x00"))
+        out = out[left - (left % 2) :]
+        right = len(out) - len(out.rstrip(b"\x00"))
+        right -= right % 2
+        if right:
+            out = out[:-right]
+        return bytes(out)
+
+    def _render_capture_mix(self, buffers, duration):
+        """Mix every opted-in user's last ``duration`` seconds into one track.
+
+        Each Discord speaker's RTP clock is independent, so we map each user's
+        audio time onto the shared arrival clock via their median (arrival −
+        audio) offset — this lines speakers up with each other. Within a user,
+        frames are laid in contiguous runs (split only on real pauses) to avoid
+        the short-frame slivers that click. Overlapping speech sums (audioop.add
+        saturates, so it won't wrap). Returns 48kHz mono int16 PCM."""
+        sr = self.CAPTURE_SAMPLE_RATE
+        runs = []  # (canvas_start_seconds, pcm bytes)
+        global_end = None
+        for chunks in buffers.values():
+            if not chunks:
+                continue
+            offs = sorted(now - at for (now, at, _pcm) in chunks)
+            offset = offs[len(offs) // 2]  # audio-clock → arrival-clock
+            cur = bytearray()
+            cur_start = None
+            prev_end = None
+            for _now, at, pcm in chunks:
+                ct = at + offset
+                if prev_end is None or (ct - prev_end) > self.CAPTURE_PAUSE_GAP:
+                    if cur:
+                        runs.append((cur_start, bytes(cur)))
+                    cur = bytearray(pcm)
+                    cur_start = ct
+                else:
+                    cur += pcm
+                prev_end = ct + len(pcm) / 2 / sr
+            if cur:
+                runs.append((cur_start, bytes(cur)))
+            if prev_end is not None:
+                global_end = (
+                    prev_end if global_end is None else max(global_end, prev_end)
+                )
+
+        if global_end is None or not runs:
+            return b""
+        start = global_end - duration
+        canvas = bytearray(int(round(duration * sr)) * 2)
+        for cstart, pcm in runs:
+            off = int(round((cstart - start) * sr))
+            if off < 0:  # run straddles the window start — trim its lead-in
+                pcm = pcm[(-off) * 2 :]
+                off = 0
+            byte_off = off * 2
+            if byte_off >= len(canvas) or not pcm:
+                continue
+            seg = pcm[: len(canvas) - byte_off]
+            end_b = byte_off + len(seg)
+            canvas[byte_off:end_b] = audioop.add(bytes(canvas[byte_off:end_b]), seg, 2)
+
+        left = len(canvas) - len(canvas.lstrip(b"\x00"))
+        canvas = canvas[left - (left % 2) :]
+        right = len(canvas) - len(canvas.rstrip(b"\x00"))
+        right -= right % 2
+        if right:
+            canvas = canvas[:-right]
+        return bytes(canvas)
+
+    def _write_capture(self, target, pcm, requested_by):
+        captures_dir = playback.AUDIO_DIR / "captures"
+        captures_dir.mkdir(parents=True, exist_ok=True)
+        stamp = datetime.datetime.utcnow().strftime("%Y%m%d%H%M%S")
+        safe = re.sub(r"[^A-Za-z0-9_-]", "_", str(target)) or "user"
+        filename = "cap_{0}_{1}.wav".format(stamp, safe)
+        path = captures_dir / filename
+        with wave.open(str(path), "wb") as f:
+            f.setparams((1, 2, self.CAPTURE_SAMPLE_RATE, 0, "NONE", "not compressed"))
+            f.writeframes(pcm)
+        duration_s = round(len(pcm) / 2 / self.CAPTURE_SAMPLE_RATE, 2)
+        self.mongo.db.pending_clips.insert_one(
+            {
+                "target_voice": target,
+                "requested_by": requested_by,
+                "duration_s": duration_s,
+                "file": "captures/" + filename,
+                "created_at": datetime.datetime.utcnow(),
+                "status": "pending",
+            }
+        )
+        return {"duration_s": duration_s}
+
     def resolve_clip(self, ref):
         collection = self.mongo.clips_collection
         return collection.find_one({"identifier": ref}) or collection.find_one(
@@ -116,8 +541,14 @@ class DiscordBot(commands.Bot):
         )
 
     async def play_file(
-        self, voice_client, file_name, speed, shift, interrupt=False,
-        voice_key=None, gain_db=0,
+        self,
+        voice_client,
+        file_name,
+        speed,
+        shift,
+        interrupt=False,
+        voice_key=None,
+        gain_db=0,
     ):
         volume = await asyncio.to_thread(self.mongo.get_volume)
         volume = volume * transform.gain_db_to_multiplier(gain_db)
@@ -174,9 +605,10 @@ class DiscordBot(commands.Bot):
             return
         voice_client = channel.guild.voice_client
         if voice_client is None:
-            voice_client = await channel.connect()
+            voice_client = await self._connect_voice(channel)
         elif voice_client.channel != channel:
             await voice_client.move_to(channel)
+        self._start_listening(voice_client)
         self.get_player(voice_client)
         # Remember where to rejoin after a restart (manual or the twice-daily one).
         await self._set_rejoin(str(channel.id))
@@ -315,8 +747,13 @@ class DiscordBot(commands.Bot):
         await self._publish_voice_state()
 
     async def _maybe_play_entrance(self, member, voice_client):
+        if not config.ENTRANCE_ENABLED:
+            return  # entrance sounds disabled on this bot
         now = time.monotonic()
-        if now - self._entrance_cooldown.get(member.id, 0) < self.ENTRANCE_COOLDOWN_SECS:
+        if (
+            now - self._entrance_cooldown.get(member.id, 0)
+            < self.ENTRANCE_COOLDOWN_SECS
+        ):
             return
         doc = await asyncio.to_thread(
             lambda: self.mongo.db.entrance_sounds.find_one({"_id": str(member.id)})
@@ -341,9 +778,14 @@ class DiscordBot(commands.Bot):
             doc = await asyncio.to_thread(self.resolve_clip, c["clip_ref"])
             if doc is None:
                 continue
-            volume = base_volume * transform.gain_db_to_multiplier(doc.get("gain_db", 0))
+            volume = base_volume * transform.gain_db_to_multiplier(
+                doc.get("gain_db", 0)
+            )
             source = playback.build_source(
-                doc["file"], float(c.get("speed", 1.0)), float(c.get("pitch", 0)), volume
+                doc["file"],
+                float(c.get("speed", 1.0)),
+                float(c.get("pitch", 0)),
+                volume,
             )
             done = asyncio.Event()
             player.play_now(
@@ -403,9 +845,7 @@ class DiscordBot(commands.Bot):
                 return
             channel_id = str(voice_client.channel.id)
             guild_id = voice_client.guild.id
-            await self.announce(
-                "♻ **{0}** reconnected the bot".format(requested_by)
-            )
+            await self.announce("♻ **{0}** reconnected the bot".format(requested_by))
             log.info(
                 "Reconnect requested by %s; dropping voice and rejoining %s",
                 requested_by,
@@ -447,6 +887,10 @@ class DiscordBot(commands.Bot):
 
         if cmd_type == "skip_song":
             self._skip_event.set()
+            return
+
+        if cmd_type == "clip_capture":
+            await self._capture_clip(command)
             return
 
         voice_client = self.active_voice_client()
@@ -511,8 +955,12 @@ class DiscordBot(commands.Bot):
         ]
         self.mongo.db.song_state.replace_one(
             {"_id": "singleton"},
-            {"_id": "singleton", "current": self._song_current, "queue": queue,
-             "updated_at": datetime.datetime.utcnow()},
+            {
+                "_id": "singleton",
+                "current": self._song_current,
+                "queue": queue,
+                "updated_at": datetime.datetime.utcnow(),
+            },
             upsert=True,
         )
 
@@ -540,7 +988,9 @@ class DiscordBot(commands.Bot):
         completion (or until skipped)."""
         voice_client = self.active_voice_client()
         if voice_client is None:
-            log.warning("play_song: not in a voice channel; dropping %s", command.get("song"))
+            log.warning(
+                "play_song: not in a voice channel; dropping %s", command.get("song")
+            )
             return
         song_file = command.get("song")
         clip_ref = command.get("clip_ref")
@@ -561,11 +1011,20 @@ class DiscordBot(commands.Bot):
         t0 = time.monotonic()
         source, duration = await asyncio.to_thread(
             playback.build_song_source,
-            doc["file"], song_file, transpose, speed, gain_db, base_volume, max_seconds,
+            doc["file"],
+            song_file,
+            transpose,
+            speed,
+            gain_db,
+            base_volume,
+            max_seconds,
         )
         log.info(
             "[timing] song render %s on %s: %.0fms (%.1fs)",
-            song_file, clip_ref, (time.monotonic() - t0) * 1000, duration,
+            song_file,
+            clip_ref,
+            (time.monotonic() - t0) * 1000,
+            duration,
         )
         if source is None:
             log.warning("play_song: nothing to render for %s", song_file)
@@ -586,14 +1045,17 @@ class DiscordBot(commands.Bot):
         player = self.get_player(voice_client)
         self._skip_event.clear()
         done = asyncio.Event()
-        player.play_now("__song__", source, lambda: self.loop.call_soon_threadsafe(done.set))
+        player.play_now(
+            "__song__", source, lambda: self.loop.call_soon_threadsafe(done.set)
+        )
 
         # Wait for the song to finish naturally, be skipped, or a safety timeout.
         skip_wait = asyncio.ensure_future(self._skip_event.wait())
         done_wait = asyncio.ensure_future(done.wait())
         try:
             await asyncio.wait(
-                {skip_wait, done_wait}, timeout=duration + 5.0,
+                {skip_wait, done_wait},
+                timeout=duration + 5.0,
                 return_when=asyncio.FIRST_COMPLETED,
             )
         finally:

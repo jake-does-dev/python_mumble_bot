@@ -46,7 +46,7 @@ export default function SongInstrumentPanel({ pick, onUpdate, onPlay, onCancel, 
         </label>
         <label className={styles.row}>
           <span>Volume <strong>{gain > 0 ? '+' : ''}{gain} dB</strong></span>
-          <input type="range" min={-12} max={12} step={1}
+          <input type="range" min={-12} max={0} step={1}
             value={gain} onChange={e => onUpdate({ gain: Number(e.target.value) })} />
         </label>
         <label className={styles.row}>

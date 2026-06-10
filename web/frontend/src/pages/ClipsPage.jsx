@@ -55,6 +55,7 @@ export default function ClipsPage() {
   const [isAdmin, setIsAdmin] = useState(false)
   const [voiceControl, setVoiceControl] = useState(false)
   const [clipCapture, setClipCapture] = useState(false)
+  const [entranceEnabled, setEntranceEnabled] = useState(true)
   const [username, setUsername] = useState(null)
   const [presenceRequired, setPresenceRequired] = useState(false)
   const [voiceLinked, setVoiceLinked] = useState(false)
@@ -167,6 +168,7 @@ export default function ClipsPage() {
         setIsAdmin(meRes.data.is_admin)
         setVoiceControl(meRes.data.voice_control)
         setClipCapture(meRes.data.clip_capture)
+        setEntranceEnabled(meRes.data.entrance_enabled !== false)
         setUsername(meRes.data.username)
         setPresenceRequired(meRes.data.presence_required)
         setVoiceLinked(meRes.data.voice_linked)
@@ -669,7 +671,7 @@ export default function ClipsPage() {
           >
             {theme === 'dark' ? '☀' : '☾'}
           </button>
-          <button className={styles.statsLink} onClick={() => setEntranceOpen(true)} title="Set the sound that plays when you join the bot's channel">🔔 Entrance</button>
+          {entranceEnabled && <button className={styles.statsLink} onClick={() => setEntranceOpen(true)} title="Set the sound that plays when you join the bot's channel">🔔 Entrance</button>}
           {clipCapture && <button className={styles.statsLink} onClick={() => setClipThatOpen(true)} title="Clip the last 30s of someone's voice into a soundboard clip">✂️ Clip that</button>}
           <button className={styles.statsLink} onClick={() => setHelpOpen(true)} title="How to use the bot">❓ Help</button>
           <Link to="/stats" className={styles.statsLink}>📊 Stats</Link>
