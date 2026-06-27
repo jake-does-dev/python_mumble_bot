@@ -36,14 +36,15 @@ MIN_NOTE_SECONDS = 0.08
 SONG_LOUDNORM = "loudnorm=I=-16:TP=-1.5:LRA=11"
 
 
-def build_source(file_name, speed, shift, volume):
-    """Build a Discord audio source for a clip, applying speed/pitch/volume.
+def build_source(file_name, speed, shift, volume, reverse=False):
+    """Build a Discord audio source for a clip, applying speed/pitch/volume
+    (and optionally playing it backwards).
 
     Discord consumes a true 48kHz stereo stream, so we use the standard
     (asetrate-based) filter rather than the Mumble reinterpret-rate filter.
     """
     path = AUDIO_DIR.joinpath(file_name)
-    audio_filter = transform.generate_standard_filter(volume, speed, shift)
+    audio_filter = transform.generate_standard_filter(volume, speed, shift, reverse)
     return discord.FFmpegPCMAudio(
         str(path),
         options='-af "{0}"'.format(audio_filter),

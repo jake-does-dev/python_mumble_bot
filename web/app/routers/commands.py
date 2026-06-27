@@ -43,6 +43,7 @@ def _check_play_rate(user: str) -> None:
 class PlayOptions(BaseModel):
     pitch: int = Field(default=0, ge=-12, le=12)
     speed: float = Field(default=1.0, ge=0.5, le=4.0)  # 0.5x minimum playback speed
+    reverse: bool = False  # play the clip backwards (non-destructive, per-play)
 
 
 class QueueItem(BaseModel):
@@ -50,6 +51,7 @@ class QueueItem(BaseModel):
     clip_name: str = ""
     pitch: int = Field(default=0, ge=-12, le=12)
     speed: float = Field(default=1.0, ge=0.5, le=4.0)
+    reverse: bool = False
 
 
 class PlayQueueRequest(BaseModel):
@@ -80,6 +82,7 @@ def play_clip(
         requested_by=current_user,
         pitch=options.pitch,
         speed=options.speed,
+        reverse=options.reverse,
     )
     return {"message": f"Playing {clip_ref}"}
 
@@ -152,6 +155,7 @@ def play_queue(body: PlayQueueRequest, current_user: str = Depends(get_current_u
                 "clip_name": item.clip_name or clip["name"],
                 "pitch": item.pitch,
                 "speed": item.speed,
+                "reverse": item.reverse,
             }
         )
 

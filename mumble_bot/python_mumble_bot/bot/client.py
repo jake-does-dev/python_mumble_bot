@@ -272,6 +272,10 @@ class Client:
         self.mumble.is_ready()
         self.managers[self.STATE_MANAGER].refresh_state()
         self._seed_entrance_from_legacy()
+        # Capture consent is session-scoped: a fresh process starts with everyone
+        # opted out, so they must opt in again for this session.
+        if CLIP_CAPTURE_ENABLED and self.managers[self.CAPTURE_MANAGER] is not None:
+            self.managers[self.CAPTURE_MANAGER].clear_optin()
 
     def loop(self):
         while self.mumble.is_alive():

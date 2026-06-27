@@ -372,10 +372,10 @@ export default function ClipsPage() {
     }
   }
 
-  async function handlePlay(identifier, pitch, speed) {
+  async function handlePlay(identifier, pitch, speed, reverse = false) {
     setPlayingId(identifier)
     try {
-      await api.post(`/api/commands/play/${identifier}`, { pitch, speed })
+      await api.post(`/api/commands/play/${identifier}`, { pitch, speed, reverse })
       setTimeout(fetchHistory, 1500)
     } catch (err) {
       if (err.response?.status === 403 || err.response?.status === 429) {
@@ -460,7 +460,7 @@ export default function ClipsPage() {
     saveQueues(queues.map(q => q.id === id ? { ...q, name } : q))
   }
 
-  function handleAddToQueue(identifier, name, pitch, speed) {
+  function handleAddToQueue(identifier, name, pitch, speed, reverse = false) {
     let targetId = activeQueueId
     let current = queues
     if (!current.find(q => q.id === targetId)) {
@@ -474,7 +474,7 @@ export default function ClipsPage() {
     if (target && target.items.length >= 30) return
     saveQueues(current.map(q =>
       q.id === targetId
-        ? { ...q, items: [...q.items, { id: newId(), identifier, name, pitch, speed }] }
+        ? { ...q, items: [...q.items, { id: newId(), identifier, name, pitch, speed, reverse }] }
         : q
     ))
     setSidebarTab('queue')
@@ -546,6 +546,7 @@ export default function ClipsPage() {
           clip_name: item.name,
           pitch: item.pitch,
           speed: item.speed,
+          reverse: item.reverse || false,
         })),
       })
       setQueueCooldownUntil(Date.now() + 10000)
@@ -603,7 +604,7 @@ export default function ClipsPage() {
       clipName: preset?.clip_name || '',
       transpose: preset?.transpose ?? 0,
       speed: preset?.speed ?? 1.0,
-      gain: preset?.gain ?? 0,
+      gain: preset?.gain ?? -6,  // music starts a touch quieter than clips
       maxSeconds: preset?.max_seconds ?? 10,
     })
     handleSetMainView('clips')

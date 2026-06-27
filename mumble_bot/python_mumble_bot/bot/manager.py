@@ -173,9 +173,9 @@ class PlaybackManager(EventManager):
             else:
                 self._voices[key] = {"pcm": pcm, "pos": 0}
 
-    def _get_pcm(self, ref, file, pitch_filter, volume, speed, shift):
+    def _get_pcm(self, ref, file, pitch_filter, volume, speed, shift, reverse=False):
         # Cache key includes the file mtime (so a trim/re-upload invalidates it)
-        # and every transform param (so pitch/speed/volume changes are distinct).
+        # and every transform param (so pitch/speed/volume/reverse changes are distinct).
         try:
             mtime = os.path.getmtime(file)
         except OSError:
@@ -187,6 +187,7 @@ class PlaybackManager(EventManager):
             round(volume, 3),
             round(speed, 4),
             round(shift, 4),
+            reverse,
         )
         pcm = self._pcm_cache.get(key)
         if pcm is not None:
@@ -194,7 +195,13 @@ class PlaybackManager(EventManager):
             return pcm, True
 
         pcm = transform.transform_audio(
-            file, pitch_filter, volume, speed, shift, desired_output="pcm"
+            file,
+            pitch_filter,
+            volume,
+            speed,
+            shift,
+            desired_output="pcm",
+            reverse=reverse,
         )
         self._pcm_cache[key] = pcm
         self._pcm_cache_bytes += len(pcm)
@@ -255,8 +262,9 @@ class PlaybackManager(EventManager):
     def _play_clips(self, event, pitch_filter):
         key = event.voice_key or "default"
         segment = b""
-        for ref, speed, shift in zip(
-            event.data, event.playback_speeds, event.semitone_shifts
+        reverses = event.reverses or [False] * len(event.data)
+        for ref, speed, shift, reverse in zip(
+            event.data, event.playback_speeds, event.semitone_shifts, reverses
         ):
             file = self.state_manager.find_audio_clip(ref)
             gain = transform.gain_db_to_multiplier(
@@ -265,7 +273,13 @@ class PlaybackManager(EventManager):
             volume = self.state_manager.get_volume() * gain
             t0 = time.monotonic()
             pcm, cached = self._get_pcm(
-                ref, file, pitch_filter, volume, float(speed[:-1]), float(shift[:-1])
+                ref,
+                file,
+                pitch_filter,
+                volume,
+                float(speed[:-1]),
+                float(shift[:-1]),
+                reverse,
             )
             segment += pcm
             log.info(
@@ -856,6 +870,25 @@ class CaptureManager(EventManager):
             for name in [n for n in self._buffers if n not in optin]:
                 del self._buffers[name]
 
+    def clear_optin(self):
+        """Wipe everyone's capture consent. Consent is session-scoped: it's
+        cleared when the bot leaves/joins a channel (and at startup), so everyone
+        must opt in again for each channel session. Returns how many were cleared."""
+        try:
+            res = self.mongo_interface.db.users.update_many(
+                {"capture_optin": True}, {"$set": {"capture_optin": False}}
+            )
+            cleared = res.modified_count
+        except Exception:
+            log.exception("Failed to clear capture opt-ins")
+            return 0
+        with self._lock:
+            self._optin = set()
+            self._buffers.clear()
+        if cleared:
+            log.info("Capture consent reset: cleared %d opt-in(s)", cleared)
+        return cleared
+
     # ---- events ------------------------------------------------------------
     def accept(self, event):
         return isinstance(event, (RecordEvent, CaptureEvent))
@@ -1090,18 +1123,25 @@ class CommandManager(EventManager):
 
         if cmd_type == "join":
             # "Summon" the bot to another channel. Mumble bots are always in a
-            # channel, so this is a move, not a connect.
+            # channel, so this is a move, not a connect. Fresh session → fresh
+            # consent: wipe opt-ins so everyone must opt in again.
+            if self.capture_manager is not None:
+                self.capture_manager.clear_optin()
             self.playback_manager.join_channel(command.get("channel_id"))
             return
 
         if cmd_type == "leave":
             # No "disconnect from voice" in Mumble — go back to the home/root
-            # channel (the closest equivalent to Discord's leave).
+            # channel (the closest equivalent to Discord's leave). Clear consent
+            # so nobody stays opted in while the bot is away.
+            if self.capture_manager is not None:
+                self.capture_manager.clear_optin()
             self.playback_manager.leave_channel()
             return
 
         speed = command.get("speed", 1.0)
         pitch = command.get("pitch", 0)
+        reverse = bool(command.get("reverse", False))
 
         if cmd_type == "play":
             clip_name = command.get("clip_name") or command["clip_ref"]
@@ -1123,6 +1163,7 @@ class CommandManager(EventManager):
             [f"{pitch}s"],
             voice_key=voice_key,
             append=append,
+            reverses=[reverse],
         )
         self.playback_manager.process(event)
 

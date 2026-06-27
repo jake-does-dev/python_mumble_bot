@@ -67,16 +67,24 @@ def test_list_pending(db, audio_dir):
     assert all("id" in p for p in pending)
 
 
-def test_promote_creates_clip_and_removes_capture(db, audio_dir):
+def test_promote_creates_clip_and_keeps_capture(db, audio_dir):
     cid = _seed_capture(db, audio_dir)
     clip = CapturesService().promote(
         cid, "daves_gem", ["funny"], None, None, user="alice", is_admin=False
     )
     assert clip["name"] == "daves_gem"
-    # the clip file now exists, the capture is gone (doc + temp file)
+    # the clip file now exists, and the capture is KEPT (doc + temp file) so more
+    # clips can be pulled from the same grab — only discard removes it.
     assert (audio_dir / clip["file"]).exists()
-    assert db.pending_clips.find_one({"target_voice": "dave"}) is None
-    assert not (audio_dir / "captures" / "cap_x.wav").exists()
+    assert db.pending_clips.find_one({"target_voice": "dave"}) is not None
+    assert (audio_dir / "captures" / "cap_x.wav").exists()
+
+    # a second clip can be promoted from the same capture (different name)
+    clip2 = CapturesService().promote(
+        cid, "daves_gem_two", [], None, None, user="alice", is_admin=False
+    )
+    assert (audio_dir / clip2["file"]).exists()
+    assert db.pending_clips.find_one({"target_voice": "dave"}) is not None
 
 
 def test_promote_rejects_non_owner(db, audio_dir):

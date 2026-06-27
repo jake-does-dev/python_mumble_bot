@@ -80,9 +80,8 @@ class CapturesService:
             name, ".wav", contents, tags, uploaded_by=user, start=start, end=end
         )
 
-        # Only once the clip is safely created do we drop the pending capture.
-        self.db.pending_clips.delete_one({"_id": doc["_id"]})
-        self._unlink(path)
+        # Keep the capture in the review list so several clips can be pulled from
+        # one grab (different trims/names). It's only removed on explicit discard.
         return clip
 
     def discard(self, capture_id: str, user: str, is_admin: bool) -> None:

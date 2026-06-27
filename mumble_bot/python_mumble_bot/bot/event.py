@@ -19,10 +19,13 @@ class AudioEvent(Event):
         semitone_shifts=None,
         voice_key=None,
         append=True,
+        reverses=None,
     ):
         super().__init__(data)
         self.playback_speeds = playback_speeds
         self.semitone_shifts = semitone_shifts
+        # Parallel to data: whether each clip plays backwards. None → all forward.
+        self.reverses = reverses
         # Mixer routing: which "voice" this plays on, and whether it appends to
         # that voice (sequential) or replaces it (interrupt/restart). Web single
         # plays key by requester + replace; queues use a shared appending voice;

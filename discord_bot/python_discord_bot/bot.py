@@ -246,6 +246,10 @@ class DiscordBot(commands.Bot):
         self._capture_buffers = {}
         self._capture_optin = set()
         self._capture_lock = threading.Lock()
+        # Capture consent is session-scoped: it's wiped whenever the bot isn't in
+        # a channel, so everyone must opt in again each time it (re)joins. This
+        # tracks whether we've already cleared for the current disconnected spell.
+        self._optins_cleared = False
 
     ENTRANCE_COOLDOWN_SECS = 30
     # Wait this long after someone joins before playing, so their client's audio
@@ -284,11 +288,35 @@ class DiscordBot(commands.Bot):
         player.start(self.loop)
         return player
 
+    def _clear_all_capture_optin(self):
+        """Wipe everyone's capture consent (sync — call via to_thread). Consent
+        is session-scoped: it must be re-given each time the bot joins a channel,
+        and it's dropped while the bot isn't connected. Returns how many were
+        cleared. Also drops the in-memory opt-in set + buffered audio so nothing
+        lingers between the DB write and the next refresh."""
+        try:
+            res = self.mongo.db.users.update_many(
+                {"capture_optin": True}, {"$set": {"capture_optin": False}}
+            )
+            cleared = res.modified_count
+        except Exception:
+            log.exception("Failed to clear capture opt-ins")
+            return 0
+        with self._capture_lock:
+            self._capture_optin = set()
+            self._capture_buffers.clear()
+        return cleared
+
     # ---- voice connect + receive ------------------------------------------
     async def _connect_voice(self, channel):
         """Connect to a voice channel. With capture on, use the receive-capable
         client (a VoiceClient superset, so playback is unaffected) and start the
         rolling-buffer listener."""
+        if config.CLIP_CAPTURE_ENABLED:
+            # Fresh session → fresh consent: everyone must opt in again.
+            n = await asyncio.to_thread(self._clear_all_capture_optin)
+            if n:
+                log.info("Capture consent reset on join: cleared %d opt-in(s)", n)
         cls = (
             voice_recv.VoiceRecvClient
             if config.CLIP_CAPTURE_ENABLED
@@ -549,11 +577,12 @@ class DiscordBot(commands.Bot):
         interrupt=False,
         voice_key=None,
         gain_db=0,
+        reverse=False,
     ):
         volume = await asyncio.to_thread(self.mongo.get_volume)
         volume = volume * transform.gain_db_to_multiplier(gain_db)
         t = time.monotonic()
-        source = playback.build_source(file_name, speed, shift, volume)
+        source = playback.build_source(file_name, speed, shift, volume, reverse)
         log.info(
             "[timing] ffmpeg spawn for %s: %.0fms",
             file_name,
@@ -676,6 +705,20 @@ class DiscordBot(commands.Bot):
         ]
         voice_client = self.active_voice_client()
         current = str(voice_client.channel.id) if voice_client else None
+        # Session-scoped consent: while the bot isn't in a channel, nobody is
+        # opted in. Clear once on the transition to disconnected (and reset the
+        # latch on reconnect so the next disconnect clears again).
+        if config.CLIP_CAPTURE_ENABLED:
+            if current is None:
+                if not self._optins_cleared:
+                    n = await asyncio.to_thread(self._clear_all_capture_optin)
+                    if n:
+                        log.info(
+                            "Bot not in a channel — cleared %d capture opt-in(s)", n
+                        )
+                    self._optins_cleared = True
+            else:
+                self._optins_cleared = False
         # Members of the bot's current channel — the presence-gate set.
         present = []
         if voice_client is not None:
@@ -902,6 +945,7 @@ class DiscordBot(commands.Bot):
 
         speed = float(command.get("speed", 1.0))
         pitch = float(command.get("pitch", 0))
+        reverse = bool(command.get("reverse", False))
 
         created = command.get("created_at")
         if isinstance(created, datetime.datetime):
@@ -935,6 +979,7 @@ class DiscordBot(commands.Bot):
             interrupt=(cmd_type == "play"),
             voice_key=command.get("requested_by") or "web",
             gain_db=doc.get("gain_db", 0),
+            reverse=reverse,
         )
         log.info(
             "[timing] %s resolve+build+enqueue %.0fms",

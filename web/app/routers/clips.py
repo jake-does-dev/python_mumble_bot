@@ -145,6 +145,7 @@ def clip_audio(
     identifier: str,
     pitch: int = 0,
     speed: float = 1.0,
+    reverse: bool = False,
     current_user: str = Depends(get_current_user),
 ):
     clips_service = ClipsService()
@@ -155,15 +156,15 @@ def clip_audio(
     if not path.exists():
         raise HTTPException(404, "Audio file not found")
 
-    # No pitch/speed → serve the raw file (waveform, download, plain preview).
+    # No transform at all → serve the raw file (waveform, download, plain preview).
     pitch = max(-12, min(12, pitch))
     speed = max(0.5, min(4.0, speed))
-    if pitch == 0 and abs(speed - 1.0) < 1e-3:
+    if pitch == 0 and abs(speed - 1.0) < 1e-3 and not reverse:
         media_type = "audio/mpeg" if path.suffix.lower() == ".mp3" else "audio/wav"
         return FileResponse(path, media_type=media_type)
 
     # Otherwise render it exactly as the bot would play it.
-    out = clips_service.render_preview(clip, pitch, speed)
+    out = clips_service.render_preview(clip, pitch, speed, reverse)
     return FileResponse(out, media_type="audio/wav")
 
 

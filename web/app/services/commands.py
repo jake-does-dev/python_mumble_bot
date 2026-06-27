@@ -50,7 +50,7 @@ class CommandsService:
             }
         )
 
-    def enqueue_play(self, clip_ref: str, clip_name: str, requested_by: str, pitch: int = 0, speed: float = 1.0) -> dict:
+    def enqueue_play(self, clip_ref: str, clip_name: str, requested_by: str, pitch: int = 0, speed: float = 1.0, reverse: bool = False) -> dict:
         now = datetime.utcnow()
         command = {
             "type": "play",
@@ -61,6 +61,7 @@ class CommandsService:
             "created_at": now,
             "pitch": pitch,
             "speed": speed,
+            "reverse": reverse,
         }
         self.db.pending_commands.insert_one(command)
         self._log_play(clip_ref, clip_name, requested_by, pitch, speed, now)
@@ -97,6 +98,7 @@ class CommandsService:
                 "created_at": played_at,
                 "pitch": item.get("pitch", 0),
                 "speed": item.get("speed", 1.0),
+                "reverse": item.get("reverse", False),
             })
             log_docs.append({
                 "clip_ref": item["clip_ref"],

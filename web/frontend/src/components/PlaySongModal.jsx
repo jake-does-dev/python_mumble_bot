@@ -17,7 +17,7 @@ export default function PlaySongModal({ song, clips, preset, onClose, onPlay }) 
   const [clipName, setClipName] = useState(preset?.clip_name || '')
   const [transpose, setTranspose] = useState(preset?.transpose ?? 0)
   const [speed, setSpeed] = useState(preset?.speed ?? 1.0)
-  const [gain, setGain] = useState(preset?.gain ?? 0)
+  const [gain, setGain] = useState(preset?.gain ?? -6)  // music starts a touch quieter than clips
   const [maxSeconds, setMaxSeconds] = useState(preset?.max_seconds ?? 10)  // default cap; 0 = full song
 
   const limitMax = Math.min(300, Math.max(30, Math.ceil(song.duration_s || 0)))

@@ -42,26 +42,36 @@
   color: #fff;
 }
 
+/* The name spans the full top row; beneath it a single band holds the metadata
+   (left, compact), the pitch/speed/reverse controls (middle, flexing as wide as
+   possible) and the action buttons (right). */
 .cardList {
-  flex-direction: row;
+  display: grid;
+  /* Fixed metadata column so the sliders align card-to-card regardless of how
+     long the uploader name is; the sliders take all remaining width (1fr). */
+  grid-template-columns: 180px minmax(0, 1fr) auto;
   align-items: center;
+  column-gap: 1rem;
+  row-gap: 0.3rem;
   padding: 0.625rem 1rem;
-  gap: 1rem;
 }
 
-/* Cap the name column (don't let it grow) so the leftover width goes to the
-   sliders instead of becoming dead space between the name and the sliders. */
-.cardList .info {
-  flex: 0 1 240px;
-  min-width: 0;
+/* Name, the edit form, and the instrument-picker button take the whole top row. */
+.cardList .nameRow,
+.cardList .editForm,
+.cardList .useInstrument {
+  grid-column: 1 / -1;
 }
 
-/* Stack the name over the uploader/id line so the name gets the full column
-   width instead of sharing the row with it (which crushed it). */
 .cardList .nameRow {
   flex-direction: column;
   align-items: flex-start;
   gap: 0;
+}
+
+/* Metadata fills its fixed column; tags wrap within it. */
+.cardList .info {
+  min-width: 0;
 }
 
 .cardList .name {
@@ -98,7 +108,7 @@
 
 .cardList .sliders {
   flex-direction: row;
-  flex: 1;
+  align-items: center;
   gap: 1rem;
   margin-top: 0;
 }
@@ -115,7 +125,6 @@
   justify-content: end;
   align-content: center;
   margin-top: 0;
-  flex-shrink: 0;
 }
 
 .nameRow {
@@ -172,6 +181,16 @@
   font-weight: 600;
 }
 
+/* List view: duration on its own line beneath the uploader. */
+.durationList {
+  display: block;
+  margin-top: 1px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  font-family: monospace;
+  color: var(--accent);
+}
+
 .tags {
   display: flex;
   flex-wrap: wrap;
@@ -226,6 +245,67 @@
   accent-color: var(--accent);
   cursor: pointer;
   height: 4px;
+}
+
+/* Reverse: a compact on/off toggle switch with the ⇄ symbol. Sits at the end
+   of the pitch/speed row (list view) or below them (grid view). */
+.reverse {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  cursor: pointer;
+  flex-shrink: 0;
+  user-select: none;
+}
+
+.reverseInput {
+  position: absolute;
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.reverseTrack {
+  position: relative;
+  display: inline-block;
+  width: 30px;
+  height: 16px;
+  border-radius: 999px;
+  background: var(--border);
+  transition: background 0.15s;
+  flex-shrink: 0;
+}
+
+.reverseKnob {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #fff;
+  transition: transform 0.15s;
+}
+
+.reverseInput:checked + .reverseTrack {
+  background: var(--accent);
+}
+
+.reverseInput:checked + .reverseTrack .reverseKnob {
+  transform: translateX(14px);
+}
+
+.reverseInput:focus-visible + .reverseTrack {
+  box-shadow: 0 0 0 2px var(--accent-border);
+}
+
+.reverseSymbol {
+  font-size: 0.85rem;
+  color: var(--text-m);
+}
+
+.reverseInput:checked ~ .reverseSymbol {
+  color: var(--accent);
 }
 
 .actions {

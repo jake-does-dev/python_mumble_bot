@@ -253,7 +253,10 @@ function CaptureReview({ cap, onDone, onToast, onSaved, allTags = [] }) {
         end,
       })
       onSaved?.(res.data) // show it in the clip list right away (no refresh)
-      onToast(`Saved “${name.trim()}” to the soundboard.`)
+      onToast(`Saved “${name.trim()}” — capture kept so you can clip more from it.`)
+      // The capture stays in the list: clear the name (each clip needs its own)
+      // so you can re-trim and save another segment from the same grab.
+      setName('')
       onDone()
     } catch (err) {
       onToast(err.response?.data?.detail || 'Save failed.')

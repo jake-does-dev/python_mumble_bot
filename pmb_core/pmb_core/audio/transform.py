@@ -42,7 +42,7 @@ def gain_db_to_multiplier(gain_db):
     return 10 ** ((gain_db or 0) / 20)
 
 
-def generate_filter(pitch_filter, volume, speed, shift):
+def generate_filter(pitch_filter, volume, speed, shift, reverse=False):
     shift_resample_multiplier = 2 ** (-shift / 12)
     required_tempo = speed / 2 ** (shift / 12)
 
@@ -50,12 +50,17 @@ def generate_filter(pitch_filter, volume, speed, shift):
 
     pitch_filter = "".join([pitch_filter, str(shift_resample_multiplier)])
     volume_filter = "".join(["volume=", str(volume)])
-    filter = ",".join([tempo_filter, volume_filter, pitch_filter])
+    parts = [tempo_filter, volume_filter, pitch_filter]
+    if reverse:
+        # Play the clip backwards. areverse buffers the whole input, so it only
+        # suits short clips (these are <=10s) — fine here.
+        parts.append("areverse")
+    filter = ",".join(parts)
 
     return filter
 
 
-def generate_standard_filter(volume, speed, shift):
+def generate_standard_filter(volume, speed, shift, reverse=False):
     # Pitch/speed filter for consumers that play a true 48kHz stereo stream
     # (e.g. Discord), as opposed to the Mumble path which reinterprets an
     # off-rate mono stream.
@@ -73,15 +78,18 @@ def generate_standard_filter(volume, speed, shift):
 
     tempo_filter = _atempo_chain(required_tempo)
 
-    return ",".join(
-        [
-            "aresample=48000",
-            "asetrate={0}".format(set_rate),
-            "aresample=48000",
-            tempo_filter,
-            "volume={0}".format(volume),
-        ]
-    )
+    parts = [
+        "aresample=48000",
+        "asetrate={0}".format(set_rate),
+        "aresample=48000",
+        tempo_filter,
+        "volume={0}".format(volume),
+    ]
+    if reverse:
+        # Play the clip backwards (clips are short, so buffering the whole
+        # input in areverse is fine).
+        parts.append("areverse")
+    return ",".join(parts)
 
 
 def transform_audio(
@@ -92,8 +100,9 @@ def transform_audio(
     shift,
     desired_output="pcm",
     output_file=None,
+    reverse=False,
 ):
-    filter = generate_filter(pitch_filter, volume, speed, shift)
+    filter = generate_filter(pitch_filter, volume, speed, shift, reverse)
 
     if desired_output == "pcm":
         return transform_as_pcm_data(file, filter)

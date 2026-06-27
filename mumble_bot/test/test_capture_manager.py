@@ -52,6 +52,18 @@ class FakeUsers:
         # Mirrors the bot's query: opted-in users with a linked voice_id.
         return [d for d in self.docs if d.get("capture_optin") and d.get("voice_id")]
 
+    def update_many(self, query, update):
+        # Enough of pymongo's update_many for clear_optin: match on the query and
+        # apply $set, counting docs that actually changed.
+        set_fields = update.get("$set", {})
+        modified = 0
+        for d in self.docs:
+            if all(d.get(k) == v for k, v in query.items()):
+                if any(d.get(k) != v for k, v in set_fields.items()):
+                    d.update(set_fields)
+                    modified += 1
+        return type("R", (), {"modified_count": modified})()
+
 
 class FakeMongo:
     def __init__(self, users=None):
@@ -176,3 +188,26 @@ def test_refresh_optin_reads_db_and_purges_on_optout():
     mgr._refresh_optin()
     assert mgr._optin == set()
     assert "dave" not in mgr._buffers
+
+
+def test_clear_optin_wipes_consent_set_buffers_and_db():
+    mongo = FakeMongo(
+        users=[
+            {"voice_id": "dave", "capture_optin": True},
+            {"voice_id": "sam", "capture_optin": True},
+        ]
+    )
+    mgr = CaptureManager(FakeWrapper(), mongo)
+    mgr._refresh_optin()
+    mgr.on_sound(_user("dave"), FakeChunk(0.0, _tone(100)))
+    assert mgr._optin == {"dave", "sam"} and "dave" in mgr._buffers
+
+    cleared = mgr.clear_optin()
+
+    assert cleared == 2
+    assert mgr._optin == set()
+    assert mgr._buffers == {}
+    # DB reflects everyone opted out, so a later refresh stays empty.
+    assert all(d["capture_optin"] is False for d in mongo.db.users.docs)
+    mgr._refresh_optin()
+    assert mgr._optin == set()
