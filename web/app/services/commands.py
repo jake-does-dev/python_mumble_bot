@@ -50,7 +50,7 @@ class CommandsService:
             }
         )
 
-    def enqueue_play(self, clip_ref: str, clip_name: str, requested_by: str, pitch: int = 0, speed: float = 1.0) -> dict:
+    def enqueue_play(self, clip_ref: str, clip_name: str, requested_by: str, pitch: int = 0, speed: float = 1.0, reverse: bool = False) -> dict:
         now = datetime.utcnow()
         command = {
             "type": "play",
@@ -61,6 +61,7 @@ class CommandsService:
             "created_at": now,
             "pitch": pitch,
             "speed": speed,
+            "reverse": reverse,
         }
         self.db.pending_commands.insert_one(command)
         self._log_play(clip_ref, clip_name, requested_by, pitch, speed, now)
@@ -97,6 +98,7 @@ class CommandsService:
                 "created_at": played_at,
                 "pitch": item.get("pitch", 0),
                 "speed": item.get("speed", 1.0),
+                "reverse": item.get("reverse", False),
             })
             log_docs.append({
                 "clip_ref": item["clip_ref"],
@@ -122,8 +124,12 @@ class CommandsService:
         gain: float = 0.0,
         max_seconds: float = 0.0,
         song_id: str = None,
+        instruments: Optional[List[dict]] = None,
     ) -> None:
         now = datetime.utcnow()
+        instruments = instruments or []
+        # Note when extra instrument lines are in play (for the announce + log).
+        extra = f" (+{len(instruments)} instrument lines)" if instruments else ""
         # Durable, append-only record of song plays (its own log, separate from
         # the per-clip play_log).
         self.db.song_log.insert_one(
@@ -137,13 +143,14 @@ class CommandsService:
                 "speed": speed,
                 "gain": gain,
                 "max_seconds": max_seconds,
+                "instruments": instruments,
                 "played_at": now,
             }
         )
         self.db.pending_commands.insert_many([
             {
                 "type": "announce",
-                "message": f"<b>{requested_by}</b> queued 🎵 {song_name} on {clip_name}",
+                "message": f"<b>{requested_by}</b> queued 🎵 {song_name} on {clip_name}{extra}",
                 "status": "pending",
                 "created_at": now,
             },
@@ -158,6 +165,7 @@ class CommandsService:
                 "speed": speed,
                 "gain": gain,
                 "max_seconds": max_seconds,
+                "instruments": instruments,
                 "status": "pending",
                 "created_at": now + timedelta(microseconds=1),
             },

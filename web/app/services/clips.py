@@ -466,8 +466,10 @@ class ClipsService:
         factors.append(round(t, 4))
         return ",".join(f"atempo={f}" for f in factors)
 
-    def render_preview(self, clip: dict, pitch: int, speed: float) -> Path:
-        # Render the clip through the SAME pitch/speed filter the bots use
+    def render_preview(
+        self, clip: dict, pitch: int, speed: float, reverse: bool = False
+    ) -> Path:
+        # Render the clip through the SAME pitch/speed/reverse filter the bots use
         # (asetrate shifts pitch, atempo corrects tempo → independent pitch/speed),
         # so the browser preview is exactly what playback will sound like. The
         # clip's gain is applied too; result is cached on disk by content+params.
@@ -478,19 +480,20 @@ class ClipsService:
         gain = 10 ** ((clip.get("gain_db", 0) or 0) / 20)
         ratio = 2 ** (pitch / 12)
         set_rate = int(round(48000 * ratio))
-        audio_filter = ",".join(
-            [
-                "aresample=48000",
-                f"asetrate={set_rate}",
-                "aresample=48000",
-                self._atempo_chain(speed / ratio),
-                f"volume={gain:.4f}",
-            ]
-        )
+        parts = [
+            "aresample=48000",
+            f"asetrate={set_rate}",
+            "aresample=48000",
+            self._atempo_chain(speed / ratio),
+            f"volume={gain:.4f}",
+        ]
+        if reverse:
+            parts.append("areverse")
+        audio_filter = ",".join(parts)
 
         mtime = path.stat().st_mtime
         key = hashlib.sha1(
-            f"{clip['file']}|{mtime}|{pitch}|{speed}|{gain:.4f}".encode()
+            f"{clip['file']}|{mtime}|{pitch}|{speed}|{gain:.4f}|{reverse}".encode()
         ).hexdigest()
         PREVIEW_CACHE_DIR.mkdir(parents=True, exist_ok=True)
         out = PREVIEW_CACHE_DIR / f"{key}.wav"

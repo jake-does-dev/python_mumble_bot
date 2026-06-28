@@ -372,10 +372,10 @@ export default function ClipsPage() {
     }
   }
 
-  async function handlePlay(identifier, pitch, speed) {
+  async function handlePlay(identifier, pitch, speed, reverse = false) {
     setPlayingId(identifier)
     try {
-      await api.post(`/api/commands/play/${identifier}`, { pitch, speed })
+      await api.post(`/api/commands/play/${identifier}`, { pitch, speed, reverse })
       setTimeout(fetchHistory, 1500)
     } catch (err) {
       if (err.response?.status === 403 || err.response?.status === 429) {
@@ -460,7 +460,7 @@ export default function ClipsPage() {
     saveQueues(queues.map(q => q.id === id ? { ...q, name } : q))
   }
 
-  function handleAddToQueue(identifier, name, pitch, speed) {
+  function handleAddToQueue(identifier, name, pitch, speed, reverse = false) {
     let targetId = activeQueueId
     let current = queues
     if (!current.find(q => q.id === targetId)) {
@@ -474,7 +474,7 @@ export default function ClipsPage() {
     if (target && target.items.length >= 30) return
     saveQueues(current.map(q =>
       q.id === targetId
-        ? { ...q, items: [...q.items, { id: newId(), identifier, name, pitch, speed }] }
+        ? { ...q, items: [...q.items, { id: newId(), identifier, name, pitch, speed, reverse }] }
         : q
     ))
     setSidebarTab('queue')
@@ -546,6 +546,7 @@ export default function ClipsPage() {
           clip_name: item.name,
           pitch: item.pitch,
           speed: item.speed,
+          reverse: item.reverse || false,
         })),
       })
       setQueueCooldownUntil(Date.now() + 10000)
@@ -597,21 +598,64 @@ export default function ClipsPage() {
   // and open the instrument picker in the sidebar, seeded from `preset` if the
   // play came from history.
   function startSongPick(song, preset = null) {
+    // Replaying from history? Re-seed per-line clip assignments too.
+    const assignments = {}
+    for (const ins of preset?.instruments || []) {
+      assignments[ins.program] = {
+        clipRef: ins.clip_ref,
+        clipName: ins.clip_name || ins.clip_ref,
+        gain: ins.gain ?? 0,
+      }
+    }
     setSongPick({
       song,
       clipRef: preset?.clip_ref || null,
       clipName: preset?.clip_name || '',
       transpose: preset?.transpose ?? 0,
       speed: preset?.speed ?? 1.0,
-      gain: preset?.gain ?? 0,
+      gain: preset?.gain ?? -6,  // music starts a touch quieter than clips
       maxSeconds: preset?.max_seconds ?? 10,
+      lines: [],            // instrument lines (fetched below)
+      activeProgram: null,  // which line a clip click assigns to (null = default)
+      assignments,          // { program: {clipRef, clipName, gain} }
     })
     handleSetMainView('clips')
     if (view === 'pads') handleSetView('grid')  // pads have no per-clip select button
+    // Fetch the song's instrument lines so the user can assign a clip per line.
+    api.get(`/api/songs/${song.id}/lines`)
+      .then(res => setSongPick(p => (p && p.song.id === song.id
+        ? { ...p, lines: res.data || [] } : p)))
+      .catch(() => {})
+  }
+
+  // A clip's "Use as instrument" button: assign to the active line, or set the
+  // default instrument when no line is active.
+  function assignInstrument(clip) {
+    setSongPick(p => {
+      if (!p) return p
+      if (p.activeProgram == null) {
+        return { ...p, clipRef: clip.identifier, clipName: clip.name }
+      }
+      const prev = p.assignments[p.activeProgram] || { gain: 0 }
+      return {
+        ...p,
+        assignments: {
+          ...p.assignments,
+          [p.activeProgram]: { clipRef: clip.identifier, clipName: clip.name, gain: prev.gain },
+        },
+      }
+    })
   }
 
   async function playFromPick() {
     if (!songPick?.clipRef || cooldownRemaining > 0) return
+    const instruments = Object.entries(songPick.assignments || {})
+      .filter(([, a]) => a && a.clipRef)
+      .map(([program, a]) => ({
+        program: Number(program),
+        clip_ref: a.clipRef,
+        gain: a.gain ?? 0,
+      }))
     await doPlaySong(songPick.song.id, {
       clip_ref: songPick.clipRef,
       clip_name: songPick.clipName,
@@ -619,6 +663,7 @@ export default function ClipsPage() {
       speed: Math.round(songPick.speed * 100) / 100,
       gain: songPick.gain,
       max_seconds: songPick.maxSeconds,
+      instruments,
     })
     setSongPick(null)
   }
@@ -872,8 +917,12 @@ export default function ClipsPage() {
                       view={view}
                       preset={historyPreset && historyPreset.ref === clip.identifier ? historyPreset : null}
                       picking={!!songPick}
-                      selectedInstrument={songPick?.clipRef === clip.identifier}
-                      onSelectInstrument={(c) => setSongPick(p => ({ ...p, clipRef: c.identifier, clipName: c.name }))}
+                      selectedInstrument={!!songPick && (
+                        songPick.activeProgram == null
+                          ? songPick.clipRef === clip.identifier
+                          : songPick.assignments?.[songPick.activeProgram]?.clipRef === clip.identifier
+                      )}
+                      onSelectInstrument={assignInstrument}
                       allTags={tags}
                     />
                   ))}

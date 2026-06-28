@@ -43,6 +43,11 @@
   color: var(--text);
 }
 
+.lines {
+  color: var(--accent);
+  font-weight: 600;
+}
+
 .actions {
   display: flex;
   gap: 0.4rem;

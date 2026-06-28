@@ -28,6 +28,7 @@ function formatDuration(s) {
 export default function ClipCard({ clip, onToggleFavourite, onPlay, onDelete, onAddToQueue, onGenerateQueue, onEdit, onVote, onTrimmed, onGain, username = null, playing, isAdmin = false, view = 'grid', preset = null, picking = false, selectedInstrument = false, onSelectInstrument = null, allTags = [] }) {
   const [pitch, setPitch] = useState(() => loadSetting(clip.identifier, 'pitch', 0))
   const [speed, setSpeed] = useState(() => loadSetting(clip.identifier, 'speed', 1))
+  const [reverse, setReverse] = useState(() => loadSetting(clip.identifier, 'reverse', false))
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [editing, setEditing] = useState(false)
   const [editName, setEditName] = useState(clip.name)
@@ -94,7 +95,7 @@ export default function ClipCard({ clip, onToggleFavourite, onPlay, onDelete, on
     try {
       // The preview is rendered server-side at the current pitch/speed (exactly
       // how the bot plays it), so drop the cached audio if those have changed.
-      const key = `${pitch}|${speed}`
+      const key = `${pitch}|${speed}|${reverse}`
       if (urlRef.current && urlKeyRef.current !== key) {
         if (audioRef.current) { audioRef.current.pause(); audioRef.current = null }
         URL.revokeObjectURL(urlRef.current)
@@ -102,7 +103,7 @@ export default function ClipCard({ clip, onToggleFavourite, onPlay, onDelete, on
       }
       if (!urlRef.current) {
         const res = await api.get(`/api/clips/${clip.identifier}/audio`, {
-          params: { pitch, speed },
+          params: { pitch, speed, reverse },
           responseType: 'blob',
         })
         urlRef.current = URL.createObjectURL(res.data)
@@ -118,6 +119,16 @@ export default function ClipCard({ clip, onToggleFavourite, onPlay, onDelete, on
     } catch {
       setPreviewing(false)
     }
+  }
+
+  function toggleReverse() {
+    const v = !reverse
+    setReverse(v)
+    saveSetting(clip.identifier, 'reverse', v)
+    // Bust the cached preview so it re-renders (un)reversed on the next play.
+    if (audioRef.current) { audioRef.current.pause(); audioRef.current = null }
+    if (urlRef.current) { URL.revokeObjectURL(urlRef.current); urlRef.current = null }
+    setPreviewing(false)
   }
 
   function startEdit() {
@@ -229,7 +240,7 @@ export default function ClipCard({ clip, onToggleFavourite, onPlay, onDelete, on
           </div>
         </div>
       ) : (
-        <div className={styles.info}>
+        <>
           <div className={styles.nameRow}>
             <span
               className={`${styles.name} ${styles.nameClickable} ${previewing ? styles.namePreviewing : ''}`}
@@ -241,40 +252,47 @@ export default function ClipCard({ clip, onToggleFavourite, onPlay, onDelete, on
                 {previewing ? '⏸ ' : ''}{clip.name}
               </span>
             </span>
+          </div>
+          <div className={styles.info}>
             <span
               className={styles.identifier}
               title={clip.uploaded_by ? `id: ${clip.identifier}` : undefined}
             >
               {clip.uploaded_by ? `↑ ${clip.uploaded_by}` : clip.identifier}
-              {clip.duration_s != null && (
+              {clip.duration_s != null && view !== 'list' && (
                 <span className={styles.duration} title="Clip length"> · {formatDuration(clip.duration_s)}</span>
               )}
             </span>
-          </div>
-          <div className={styles.tags}>
-            {clip.tags.map(tag => (
-              <span key={tag} className={styles.tag}>{tag}</span>
-            ))}
-          </div>
-          <div className={styles.metaRow}>
-            <div className={styles.votes}>
-              <button
-                className={`${styles.voteBtn} ${clip.my_vote === 1 ? styles.voteUp : ''}`}
-                onClick={() => onVote(clip.identifier, clip.my_vote === 1 ? 0 : 1)}
-                title="Upvote"
-              >▲</button>
-              <span className={styles.voteScore}>{clip.score ?? 0}</span>
-              <button
-                className={`${styles.voteBtn} ${clip.my_vote === -1 ? styles.voteDown : ''}`}
-                onClick={() => onVote(clip.identifier, clip.my_vote === -1 ? 0 : -1)}
-                title="Downvote"
-              >▼</button>
-            </div>
-            {clip.creation_time && (
-              <span className={styles.date}>{formatDate(clip.creation_time)}</span>
+            {clip.duration_s != null && view === 'list' && (
+              <span className={styles.durationList} title="Clip length">
+                {formatDuration(clip.duration_s)}
+              </span>
             )}
+            <div className={styles.tags}>
+              {clip.tags.map(tag => (
+                <span key={tag} className={styles.tag}>{tag}</span>
+              ))}
+            </div>
+            <div className={styles.metaRow}>
+              <div className={styles.votes}>
+                <button
+                  className={`${styles.voteBtn} ${clip.my_vote === 1 ? styles.voteUp : ''}`}
+                  onClick={() => onVote(clip.identifier, clip.my_vote === 1 ? 0 : 1)}
+                  title="Upvote"
+                >▲</button>
+                <span className={styles.voteScore}>{clip.score ?? 0}</span>
+                <button
+                  className={`${styles.voteBtn} ${clip.my_vote === -1 ? styles.voteDown : ''}`}
+                  onClick={() => onVote(clip.identifier, clip.my_vote === -1 ? 0 : -1)}
+                  title="Downvote"
+                >▼</button>
+              </div>
+              {clip.creation_time && (
+                <span className={styles.date}>{formatDate(clip.creation_time)}</span>
+              )}
+            </div>
           </div>
-        </div>
+        </>
       )}
 
       <div className={styles.sliders}>
@@ -302,6 +320,19 @@ export default function ClipCard({ clip, onToggleFavourite, onPlay, onDelete, on
             className={styles.slider}
           />
         </div>
+        <label
+          className={styles.reverse}
+          title={reverse ? 'Reverse on — plays backwards' : 'Play this clip backwards'}
+        >
+          <input
+            type="checkbox"
+            className={styles.reverseInput}
+            checked={reverse}
+            onChange={toggleReverse}
+          />
+          <span className={styles.reverseTrack}><span className={styles.reverseKnob} /></span>
+          <span className={styles.reverseSymbol}>⇄</span>
+        </label>
       </div>
 
       <div className={styles.actions}>
@@ -330,7 +361,7 @@ export default function ClipCard({ clip, onToggleFavourite, onPlay, onDelete, on
         )}
         <button
           className={styles.queue}
-          onClick={() => onAddToQueue(clip.identifier, clip.name, pitch, speed)}
+          onClick={() => onAddToQueue(clip.identifier, clip.name, pitch, speed, reverse)}
           title="Add to queue"
         >+</button>
         <button
@@ -356,12 +387,13 @@ export default function ClipCard({ clip, onToggleFavourite, onPlay, onDelete, on
           onClick={() => {
             setPitch(0); saveSetting(clip.identifier, 'pitch', 0)
             setSpeed(1); saveSetting(clip.identifier, 'speed', 1)
+            setReverse(false); saveSetting(clip.identifier, 'reverse', false)
           }}
-          title="Reset pitch and speed"
+          title="Reset pitch, speed and reverse"
         >↺</button>
         <button
           className={`${styles.play} ${playing ? styles.playing : ''}`}
-          onClick={() => onPlay(clip.identifier, pitch, speed)}
+          onClick={() => onPlay(clip.identifier, pitch, speed, reverse)}
           disabled={playing}
           title="Play"
         >
