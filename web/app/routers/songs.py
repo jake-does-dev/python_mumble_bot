@@ -1,4 +1,5 @@
 import time
+from typing import List
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from pydantic import BaseModel, Field
@@ -21,6 +22,14 @@ class RenameSongRequest(BaseModel):
     name: str
 
 
+class LineInstrument(BaseModel):
+    # Assign a clip to one instrument line (a General MIDI program). Lines left
+    # unassigned fall back to the default clip (`clip_ref`).
+    program: int = Field(ge=0, le=127)
+    clip_ref: str
+    gain: float = Field(default=0.0, ge=-30.0, le=30.0)
+
+
 class PlaySongRequest(BaseModel):
     clip_ref: str
     clip_name: str = ""
@@ -28,6 +37,8 @@ class PlaySongRequest(BaseModel):
     speed: float = Field(default=1.0, ge=0.25, le=4.0)
     gain: float = Field(default=0.0, ge=-30.0, le=30.0)
     max_seconds: float = Field(default=0.0, ge=0.0, le=600.0)  # 0 = full song
+    # Optional per-line instrument overrides (empty = single-clip, as before).
+    instruments: List[LineInstrument] = Field(default_factory=list)
 
 
 @router.get("/")
@@ -38,6 +49,12 @@ def list_songs(current_user: str = Depends(get_current_user)):
 @router.get("/history")
 def song_history(current_user: str = Depends(get_current_user)):
     return SongsService().get_history()
+
+
+@router.get("/{song_id}/lines")
+def song_lines(song_id: str, current_user: str = Depends(get_current_user)):
+    """Instrument lines in a song, for assigning a clip per line."""
+    return SongsService().get_lines(song_id)
 
 
 @router.get("/now-playing")
@@ -100,9 +117,31 @@ def play_song(
     if not song:
         raise HTTPException(404, f"Song '{song_id}' not found")
 
-    clip = ClipsService().get_clip_by_ref(body.clip_ref)
+    clips_service = ClipsService()
+    clip = clips_service.get_clip_by_ref(body.clip_ref)
     if not clip:
         raise HTTPException(404, f"Clip '{body.clip_ref}' not found")
+
+    # Resolve per-line instrument clips (skip any line whose clip is missing or
+    # which just re-picks the default — it would render identically). One entry
+    # per program (last wins) so the bot can look up by program.
+    instruments = []
+    seen = set()
+    for ins in body.instruments:
+        if ins.program in seen or ins.clip_ref == body.clip_ref:
+            continue
+        line_clip = clips_service.get_clip_by_ref(ins.clip_ref)
+        if not line_clip:
+            raise HTTPException(404, f"Clip '{ins.clip_ref}' not found")
+        seen.add(ins.program)
+        instruments.append(
+            {
+                "program": ins.program,
+                "clip_ref": ins.clip_ref,
+                "clip_name": line_clip["name"],
+                "gain": ins.gain,
+            }
+        )
 
     CommandsService().enqueue_song(
         song_id=song["id"],
@@ -115,6 +154,7 @@ def play_song(
         speed=body.speed,
         gain=body.gain,
         max_seconds=body.max_seconds,
+        instruments=instruments,
     )
     _last_song_play[current_user] = now
     return {"message": f"Playing {song['name']} on {clip['name']}"}

@@ -29,7 +29,9 @@ export default function SongHistory({ history, songs, onReplay }) {
               speed: h.speed,
               gain: h.gain,
               max_seconds: h.max_seconds,
+              instruments: h.instruments || [],
             })
+            const lineCount = (h.instruments || []).length
             return (
               <li
                 key={i}
@@ -41,6 +43,9 @@ export default function SongHistory({ history, songs, onReplay }) {
               >
                 <span className={styles.name}>
                   🎵 {h.song_name} <span className={styles.on}>on {h.clip_name}</span>
+                  {lineCount > 0 && (
+                    <span className={styles.on}> +{lineCount} instrument{lineCount > 1 ? 's' : ''}</span>
+                  )}
                 </span>
                 <span className={styles.meta}>
                   {h.requested_by} · {timeAgo(h.played_at)}

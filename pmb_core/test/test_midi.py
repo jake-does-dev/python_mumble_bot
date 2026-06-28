@@ -12,7 +12,13 @@ ticks_per_beat=480, seconds = ticks / 960, i.e. 480 ticks == 0.5s.
 import mido
 import pytest
 
-from pmb_core.audio.midi import DRUM_CHANNEL, parse_midi, summarize_midi
+from pmb_core.audio.midi import (
+    DRUM_CHANNEL,
+    gm_instrument_name,
+    parse_midi,
+    song_lines,
+    summarize_midi,
+)
 
 TPB = 480  # ticks per beat -> 480 ticks == 0.5s at the default tempo
 
@@ -114,6 +120,39 @@ def test_hanging_note_closed_at_eof(tmp_path):
 def test_empty_midi(tmp_path):
     path = _write_midi(tmp_path, [])
     assert parse_midi(path) == ([], 0.0)
+
+
+def test_notes_carry_channel_and_program(tmp_path):
+    path = _write_midi(tmp_path, [
+        mido.Message("program_change", program=56, channel=2, time=0),  # Trumpet
+        mido.Message("note_on", note=60, velocity=100, time=0, channel=2),
+        mido.Message("note_off", note=60, velocity=0, time=TPB, channel=2),
+    ])
+    notes, _ = parse_midi(path)
+    assert notes[0].channel == 2
+    assert notes[0].program == 56
+    assert gm_instrument_name(56) == "Trumpet"
+
+
+def test_song_lines_groups_by_instrument_merging_channels(tmp_path):
+    # Two channels share program 65 (Alto Sax) -> one merged line.
+    path = _write_midi(tmp_path, [
+        mido.Message("program_change", program=65, channel=0, time=0),
+        mido.Message("program_change", program=65, channel=1, time=0),
+        mido.Message("program_change", program=32, channel=2, time=0),
+        mido.Message("note_on", note=60, velocity=90, time=0, channel=0),
+        mido.Message("note_off", note=60, velocity=0, time=TPB, channel=0),
+        mido.Message("note_on", note=62, velocity=90, time=0, channel=1),
+        mido.Message("note_off", note=62, velocity=0, time=TPB, channel=1),
+        mido.Message("note_on", note=40, velocity=90, time=0, channel=2),
+        mido.Message("note_off", note=40, velocity=0, time=TPB, channel=2),
+    ])
+    lines = song_lines(path)
+    by_prog = {ln["program"]: ln for ln in lines}
+    assert set(by_prog) == {65, 32}
+    assert by_prog[65]["note_count"] == 2
+    assert by_prog[65]["channels"] == [0, 1]
+    assert by_prog[65]["instrument"] == "Alto Sax"
 
 
 def test_summarize_midi_shape(tmp_path):

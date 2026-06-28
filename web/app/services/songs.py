@@ -62,7 +62,45 @@ def _summarize(contents: bytes) -> dict:
         "duration_s": round(duration, 2),
         "note_count": note_count,
         "track_count": len(mid.tracks),
+        # How many distinct instrument "lines" can be voiced separately.
+        "instrument_count": len(_extract_lines(contents)),
     }
+
+
+def _extract_lines(contents: bytes) -> list:
+    """Group a song's notes into instrument "lines" by General MIDI program,
+    merging channels that share a program (e.g. two Alto Sax channels → one
+    line). Returns ``[{"program", "note_count", "channels"}]`` sorted busiest
+    first. Program → friendly name is done client-side. No tempo maths needed —
+    we only count note-ons and read the program active on each channel."""
+    try:
+        mid = mido.MidiFile(file=io.BytesIO(contents))
+    except Exception:
+        raise HTTPException(400, "Not a valid MIDI file")
+    programs = {}
+    lines = {}
+    for msg in mid:
+        if msg.type == "program_change":
+            programs[msg.channel] = msg.program
+        elif msg.type == "note_on" and msg.velocity > 0:
+            if getattr(msg, "channel", 0) == DRUM_CHANNEL:
+                continue
+            prog = programs.get(msg.channel, 0)
+            line = lines.setdefault(
+                prog, {"program": prog, "note_count": 0, "channels": set()}
+            )
+            line["note_count"] += 1
+            line["channels"].add(msg.channel)
+    out = [
+        {
+            "program": ln["program"],
+            "note_count": ln["note_count"],
+            "channels": sorted(ln["channels"]),
+        }
+        for ln in lines.values()
+    ]
+    out.sort(key=lambda ln: ln["note_count"], reverse=True)
+    return out
 
 
 class SongsService:
@@ -70,10 +108,35 @@ class SongsService:
         self.db = get_db()
 
     def list_songs(self) -> List[dict]:
-        return list(self.db.songs.find({}, {"_id": 0}))
+        songs = list(self.db.songs.find({}, {"_id": 0}))
+        # Backfill instrument_count for songs uploaded before it was tracked, so
+        # the library card can show how many lines a song has (one-off per song).
+        for song in songs:
+            if song.get("instrument_count") is None:
+                path = SONGS_DIR / song["filename"]
+                try:
+                    count = len(_extract_lines(path.read_bytes())) if path.exists() else 0
+                except Exception:
+                    count = 0
+                self.db.songs.update_one(
+                    {"id": song["id"]}, {"$set": {"instrument_count": count}}
+                )
+                song["instrument_count"] = count
+        return songs
 
     def get_song(self, song_id: str) -> Optional[dict]:
         return self.db.songs.find_one({"id": song_id}, {"_id": 0})
+
+    def get_lines(self, song_id: str) -> List[dict]:
+        """Instrument lines for a song (for per-line clip assignment), read from
+        the stored .mid on demand. A single-instrument song returns one line."""
+        song = self.db.songs.find_one({"id": song_id}, {"_id": 0})
+        if not song:
+            raise HTTPException(404, f"Song '{song_id}' not found")
+        path = SONGS_DIR / song["filename"]
+        if not path.exists():
+            raise HTTPException(404, "Song file missing")
+        return _extract_lines(path.read_bytes())
 
     def upload_song(self, filename: str, contents: bytes, uploaded_by: str) -> dict:
         ext = Path(filename).suffix.lower()
@@ -104,6 +167,7 @@ class SongsService:
             "duration_s": meta["duration_s"],
             "note_count": meta["note_count"],
             "track_count": meta["track_count"],
+            "instrument_count": meta["instrument_count"],
             "created_at": datetime.utcnow(),
         }
         self.db.songs.insert_one(doc)
@@ -159,6 +223,7 @@ class SongsService:
                 "speed": e.get("speed", 1.0),
                 "gain": e.get("gain", 0),
                 "max_seconds": e.get("max_seconds", 0),
+                "instruments": e.get("instruments", []),
                 "played_at": e["played_at"].isoformat() + "Z",
             }
             for e in entries

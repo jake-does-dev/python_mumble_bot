@@ -38,7 +38,11 @@ export default function SongCard({
           <MarqueeName text={song.name} className={styles.name} />
         )}
         <span className={styles.meta}>
-          {song.note_count} notes · {Math.round(song.duration_s)}s · ↑ {song.uploaded_by}
+          {song.note_count} notes
+          {song.instrument_count > 1 && (
+            <span className={styles.lines}> · 🎚 {song.instrument_count} instruments</span>
+          )}
+          {' · '}{Math.round(song.duration_s)}s · ↑ {song.uploaded_by}
         </span>
       </div>
 

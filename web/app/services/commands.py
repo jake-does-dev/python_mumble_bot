@@ -124,8 +124,12 @@ class CommandsService:
         gain: float = 0.0,
         max_seconds: float = 0.0,
         song_id: str = None,
+        instruments: Optional[List[dict]] = None,
     ) -> None:
         now = datetime.utcnow()
+        instruments = instruments or []
+        # Note when extra instrument lines are in play (for the announce + log).
+        extra = f" (+{len(instruments)} instrument lines)" if instruments else ""
         # Durable, append-only record of song plays (its own log, separate from
         # the per-clip play_log).
         self.db.song_log.insert_one(
@@ -139,13 +143,14 @@ class CommandsService:
                 "speed": speed,
                 "gain": gain,
                 "max_seconds": max_seconds,
+                "instruments": instruments,
                 "played_at": now,
             }
         )
         self.db.pending_commands.insert_many([
             {
                 "type": "announce",
-                "message": f"<b>{requested_by}</b> queued 🎵 {song_name} on {clip_name}",
+                "message": f"<b>{requested_by}</b> queued 🎵 {song_name} on {clip_name}{extra}",
                 "status": "pending",
                 "created_at": now,
             },
@@ -160,6 +165,7 @@ class CommandsService:
                 "speed": speed,
                 "gain": gain,
                 "max_seconds": max_seconds,
+                "instruments": instruments,
                 "status": "pending",
                 "created_at": now + timedelta(microseconds=1),
             },

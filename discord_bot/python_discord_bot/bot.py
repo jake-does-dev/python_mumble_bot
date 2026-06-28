@@ -1053,6 +1053,18 @@ class DiscordBot(commands.Bot):
         max_seconds = float(command.get("max_seconds", 0) or 0)
         base_volume = await asyncio.to_thread(self.mongo.get_volume)
 
+        # Resolve per-line instrument clips → {program: {file, gain_db}}. Each
+        # line's own gain stacks with its clip's stored gain (like the default).
+        instruments = {}
+        for ins in command.get("instruments") or []:
+            cdoc = await asyncio.to_thread(self.resolve_clip, ins.get("clip_ref"))
+            if cdoc is None:
+                continue
+            instruments[int(ins["program"])] = {
+                "file": cdoc["file"],
+                "gain_db": float(ins.get("gain", 0)) + float(cdoc.get("gain_db", 0)),
+            }
+
         t0 = time.monotonic()
         source, duration = await asyncio.to_thread(
             playback.build_song_source,
@@ -1063,6 +1075,7 @@ class DiscordBot(commands.Bot):
             gain_db,
             base_volume,
             max_seconds,
+            instruments,
         )
         log.info(
             "[timing] song render %s on %s: %.0fms (%.1fs)",

@@ -51,10 +51,11 @@ def build_source(file_name, speed, shift, volume, reverse=False):
     )
 
 
-def _render_clip_pcm(clip_path, shift):
+def _render_clip_pcm(clip_path, shift, volume=1.0):
     """Render one clip, pitch-shifted by `shift` semitones, to 48kHz stereo
-    s16le PCM bytes (volume 1.0 — overall level is set once at the end)."""
-    audio_filter = transform.generate_standard_filter(1.0, 1.0, shift)
+    s16le PCM bytes. `volume` bakes in a per-line gain so different instrument
+    lines can be balanced before they're mixed."""
+    audio_filter = transform.generate_standard_filter(volume, 1.0, shift)
     cmd = [
         "ffmpeg", "-hide_banner", "-loglevel", "error",
         "-i", str(clip_path),
@@ -67,22 +68,30 @@ def _render_clip_pcm(clip_path, shift):
     return proc.stdout
 
 
-def build_song_source(clip_file, song_file, transpose, speed, gain_db, base_volume, max_seconds=0):
+def build_song_source(
+    clip_file, song_file, transpose, speed, gain_db, base_volume,
+    max_seconds=0, instruments=None,
+):
     """Render a whole MIDI song into one stereo PCM source, using `clip_file` as
-    the instrument. Returns (discord.PCMAudio, duration_seconds), or (None, 0.0)
-    if there's nothing to play. The duration lets the caller time the song queue.
+    the default instrument. Returns (discord.PCMAudio, duration_seconds), or
+    (None, 0.0) if there's nothing to play.
 
-    Each note triggers the clip pitch-shifted to that note's pitch (relative to
+    Each note triggers a clip pitch-shifted to that note's pitch (relative to
     the song's median pitch, so shifts stay small), laid onto a silent canvas at
     the note's onset and capped to its duration. Overlapping notes (chords) mix
     via audioop.add. A final loudnorm tames peaks and sets the level.
 
-    `max_seconds` (0 = no limit) caps the rendered output length: notes starting
-    after it are dropped and the canvas is truncated to it.
+    `instruments` optionally maps a General MIDI program number -> {"file",
+    "gain_db"} so each instrument "line" plays a different clip (at its own
+    gain). Lines with no entry use the default `clip_file`/`gain_db`. The pitch
+    timeline (one shared median root) is unchanged, so the parts keep their
+    relative pitch — only the timbre/level per line differs.
+
+    `max_seconds` (0 = no limit) caps the rendered output length.
     Blocking (spawns ffmpeg) — call via asyncio.to_thread.
     """
     song_path = SONGS_DIR.joinpath(song_file)
-    clip_path = AUDIO_DIR.joinpath(clip_file)
+    instruments = instruments or {}
     notes, _duration = parse_midi(str(song_path))
     if not notes:
         return None, 0.0
@@ -95,14 +104,27 @@ def build_song_source(clip_file, song_file, transpose, speed, gain_db, base_volu
     def shift_for(note):
         return max(-MAX_SEMITONE_SHIFT, min(MAX_SEMITONE_SHIFT, note.pitch - root + transpose))
 
-    # Render each distinct pitch-shift once (a tune uses only a handful).
-    shift_pcm = {}
-    for n in notes:
-        if limit_bytes and int((n.start / speed) * SR) * BYTES_PER_FRAME >= limit_bytes:
-            continue
-        shift = shift_for(n)
-        if shift not in shift_pcm:
-            shift_pcm[shift] = _render_clip_pcm(clip_path, shift)
+    def line_for(note):
+        """(clip path, gain multiplier) for a note's instrument line."""
+        ins = instruments.get(note.program)
+        if ins:
+            return AUDIO_DIR.joinpath(ins["file"]), transform.gain_db_to_multiplier(
+                ins.get("gain_db", 0)
+            )
+        return AUDIO_DIR.joinpath(clip_file), transform.gain_db_to_multiplier(gain_db)
+
+    # Render each distinct (clip, shift, gain) combo once — a tune uses only a
+    # handful per line. Keyed by clip path string so different lines don't clash.
+    render_cache = {}
+
+    def render(note):
+        clip_path, vol = line_for(note)
+        key = (str(clip_path), shift_for(note), round(vol, 4))
+        pcm = render_cache.get(key)
+        if pcm is None:
+            pcm = _render_clip_pcm(clip_path, key[1], vol)
+            render_cache[key] = pcm
+        return pcm
 
     min_note_bytes = int(MIN_NOTE_SECONDS * SR) * BYTES_PER_FRAME
     placements = []
@@ -111,7 +133,7 @@ def build_song_source(clip_file, song_file, transpose, speed, gain_db, base_volu
         offset = int((n.start / speed) * SR) * BYTES_PER_FRAME
         if limit_bytes and offset >= limit_bytes:
             continue
-        pcm = shift_pcm.get(shift_for(n)) or b""
+        pcm = render(n) or b""
         if not pcm:
             continue
         cap = max(min_note_bytes, int((n.duration / speed) * SR) * BYTES_PER_FRAME)
@@ -142,7 +164,9 @@ def build_song_source(clip_file, song_file, transpose, speed, gain_db, base_volu
         if i % 8 == 7:
             time.sleep(0.001)
 
-    pcm_out = _finalize_song(bytes(canvas), base_volume * transform.gain_db_to_multiplier(gain_db))
+    # Per-line gain (incl. the default line's) is already baked into each render,
+    # so finalize only applies the overall playback volume.
+    pcm_out = _finalize_song(bytes(canvas), base_volume)
 
     # discord.PCMAudio drops a trailing partial frame, so pad to a frame boundary.
     if len(pcm_out) % FRAME_BYTES:

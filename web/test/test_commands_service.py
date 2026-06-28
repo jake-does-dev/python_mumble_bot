@@ -96,6 +96,36 @@ def test_enqueue_song_writes_log_announce_and_play_song(db):
     assert len(logs) == 1 and logs[0]["song_name"] == "God Save the Queen"
 
 
+def test_enqueue_song_carries_per_line_instruments(db):
+    svc = CommandsService()
+    instruments = [
+        {"program": 56, "clip_ref": "honk", "clip_name": "honk", "gain": -3},
+        {"program": 32, "clip_ref": "bark", "clip_name": "bark", "gain": 0},
+    ]
+    svc.enqueue_song(
+        song_filename="moon.mid",
+        song_name="Fly Me to the Moon",
+        clip_ref="meow",
+        clip_name="meow",
+        requested_by="winneh",
+        instruments=instruments,
+        song_id="moon",
+    )
+    ps = _pending(db, type="play_song")[0]
+    assert ps["instruments"] == instruments  # passed through to the bot verbatim
+    # the announce flags the extra lines, and the log keeps them too
+    assert "instrument lines" in _pending(db, type="announce")[0]["message"]
+    assert db.song_log.find_one({})["instruments"] == instruments
+
+
+def test_enqueue_song_defaults_to_no_instruments(db):
+    CommandsService().enqueue_song(
+        song_filename="x.mid", song_name="X", clip_ref="c", clip_name="c",
+        requested_by="w",
+    )
+    assert _pending(db, type="play_song")[0]["instruments"] == []
+
+
 def test_enqueue_skip_song(db):
     svc = CommandsService()
     svc.enqueue_skip_song("winneh")

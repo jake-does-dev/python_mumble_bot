@@ -73,6 +73,106 @@
   border: 1px dashed var(--border);
 }
 
+/* Instrument lines: each is a tappable row (select as the assignment target)
+   plus an optional volume control once a clip is assigned. */
+.lineRow {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  text-align: left;
+  font-size: 0.78rem;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  border-radius: 6px;
+  padding: 5px 8px;
+  margin-bottom: 0.35rem;
+  cursor: pointer;
+  color: var(--text);
+}
+
+.lineRow:hover {
+  border-color: var(--accent-border);
+}
+
+.lineActive {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
+}
+
+.lineName {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-h);
+  font-weight: 600;
+}
+
+.lineClip {
+  flex-shrink: 0;
+  max-width: 45%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.lineClipEmpty {
+  flex-shrink: 0;
+  color: var(--text);
+  font-style: italic;
+  opacity: 0.7;
+}
+
+.lines {
+  margin-bottom: 0.6rem;
+}
+
+.linesHint {
+  font-size: 0.68rem;
+  color: var(--text);
+  opacity: 0.8;
+  margin: 0.2rem 0 0.4rem;
+}
+
+.line {
+  margin-bottom: 0.15rem;
+}
+
+.lineCtl {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0 4px 6px 8px;
+}
+
+.lineCtl input[type="range"] {
+  flex: 1;
+  min-width: 0;
+}
+
+.lineVol {
+  font-size: 0.68rem;
+  color: var(--text-h);
+  min-width: 3.2rem;
+}
+
+.lineClear {
+  background: transparent;
+  border: none;
+  color: var(--text);
+  cursor: pointer;
+  font-size: 0.75rem;
+  padding: 0 2px;
+}
+
+.lineClear:hover {
+  color: #ef4444;
+}
+
 .group {
   display: flex;
   flex-direction: column;
