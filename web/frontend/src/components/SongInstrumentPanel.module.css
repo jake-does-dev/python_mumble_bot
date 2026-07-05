@@ -129,6 +129,12 @@
 
 .lines {
   margin-bottom: 0.6rem;
+  /* Long songs (a dozen+ lines) would overflow the sidebar; cap the list and
+     let just the instrument rows scroll, so the sliders + Play stay in view. */
+  max-height: 34vh;
+  overflow-y: auto;
+  /* room so the volume slider / clear button aren't flush against the scrollbar */
+  padding-right: 2px;
 }
 
 .linesHint {
