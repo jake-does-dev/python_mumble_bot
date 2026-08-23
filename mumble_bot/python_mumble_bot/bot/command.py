@@ -24,7 +24,11 @@ class CommandResolver:
     def resolve(self, incoming):
         parts = incoming.message.split()
         if len(parts) < 2:
-            return InvalidCommand()
+            # A lone token is only an error if it was aimed at the bot;
+            # plain chatter (no "/" prefix) is ignored so we don't reply to it.
+            if parts and parts[0].startswith("/"):
+                return InvalidCommand()
+            return IgnoreCommand()
 
         if parts[0] == "/pp":
             commands = PlayCommand(parts[1:])
@@ -543,7 +547,8 @@ class InvalidCommand(Command):
         super().__init__()
 
     def generate_events(self, mongo_interface, user):
-        return [UserTextEvent(self.data, user)]
+        message = "Invalid command. Type '/pmb help' to see available commands."
+        return [UserTextEvent(message, user)]
 
 
 class IgnoreCommand(Command):
@@ -551,7 +556,8 @@ class IgnoreCommand(Command):
         super().__init__()
 
     def generate_events(self, mongo_interface, user):
-        return [UserTextEvent(self.data, user)]
+        # Nothing to say — the message wasn't for the bot.
+        return []
 
 
 class VolumeCommand(Command):
