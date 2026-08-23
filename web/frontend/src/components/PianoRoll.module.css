@@ -1,0 +1,105 @@
+/* Categorical palette for instrument lines. Validated (dataviz skill) against
+   the app's own surfaces for both themes — assigned in fixed order, never
+   cycled; a 9th+ line folds into --roll-other. Identity is never colour-alone:
+   the modal always shows the instrument legend and lets you isolate a line. */
+.root {
+  --roll-1: #2a78d6;
+  --roll-2: #eb6834;
+  --roll-3: #1baf7a;
+  --roll-4: #eda100;
+  --roll-5: #e87ba4;
+  --roll-6: #008300;
+  --roll-7: #4a3aa7;
+  --roll-8: #e34948;
+  --roll-other: #898781;
+  --roll-grid: #e1e0d9;
+  --roll-axis-ink: #898781;
+}
+
+:root[data-theme="dark"] .root {
+  --roll-1: #3987e5;
+  --roll-2: #d95926;
+  --roll-3: #199e70;
+  --roll-4: #c98500;
+  --roll-5: #d55181;
+  --roll-6: #008300;
+  --roll-7: #9085e9;
+  --roll-8: #e66767;
+  --roll-other: #898781;
+  --roll-grid: #2c2c2a;
+  --roll-axis-ink: #898781;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .root {
+    --roll-1: #3987e5;
+    --roll-2: #d95926;
+    --roll-3: #199e70;
+    --roll-4: #c98500;
+    --roll-5: #d55181;
+    --roll-6: #008300;
+    --roll-7: #9085e9;
+    --roll-8: #e66767;
+    --roll-other: #898781;
+    --roll-grid: #2c2c2a;
+    --roll-axis-ink: #898781;
+  }
+}
+
+.scroll {
+  overflow-x: auto;
+  overflow-y: hidden;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+}
+
+.svg {
+  display: block;
+}
+
+.grid,
+.gridV {
+  stroke: var(--roll-grid);
+  stroke-width: 1;
+}
+
+.pitchLabel {
+  fill: var(--roll-axis-ink);
+  font-size: 9px;
+  font-family: var(--mono);
+}
+
+.timeLabel {
+  fill: var(--roll-axis-ink);
+  font-size: 9px;
+  font-family: var(--mono);
+}
+
+.note {
+  /* 1px surface gap between fills so overlapping/adjacent notes stay distinct. */
+  stroke: var(--bg);
+  stroke-width: 0.5;
+  transition: opacity 0.12s;
+}
+
+.dim {
+  opacity: 0.16;
+}
+
+.roll-1 { fill: var(--roll-1); }
+.roll-2 { fill: var(--roll-2); }
+.roll-3 { fill: var(--roll-3); }
+.roll-4 { fill: var(--roll-4); }
+.roll-5 { fill: var(--roll-5); }
+.roll-6 { fill: var(--roll-6); }
+.roll-7 { fill: var(--roll-7); }
+.roll-8 { fill: var(--roll-8); }
+.roll-other { fill: var(--roll-other); }
+
+.empty {
+  color: var(--text);
+  font-size: 0.85rem;
+  padding: 1rem;
+  text-align: center;
+}

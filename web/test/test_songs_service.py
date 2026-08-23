@@ -7,7 +7,12 @@ import io
 import mido
 
 from app.services.commands import CommandsService
-from app.services.songs import SongsService, _extract_lines, _summarize
+from app.services.songs import (
+    SongsService,
+    _extract_lines,
+    _extract_notes,
+    _summarize,
+)
 
 
 def _midi(tracks):
@@ -57,6 +62,26 @@ def test_summarize_reports_instrument_count():
     # two melodic programs (drums excluded) → 2 instruments
     assert meta["instrument_count"] == 2
     assert meta["note_count"] == 7  # drums not counted
+
+
+def test_extract_notes_for_piano_roll():
+    # Trumpet (2 notes) + bass (1 note); drums excluded. Notes carry pitch, start,
+    # duration and program so the roll can colour-by-line.
+    data = _midi([(56, 0, 2), (32, 1, 1), (0, 9, 3)])
+    out = _extract_notes(data)
+
+    assert out["truncated"] is False
+    assert out["duration_s"] > 0
+    # Lines ride along for the legend (drums excluded).
+    assert {ln["program"] for ln in out["lines"]} == {56, 32}
+    # 3 melodic notes, none from drums.
+    assert len(out["notes"]) == 3
+    assert {n["g"] for n in out["notes"]} == {56, 32}
+    for n in out["notes"]:
+        assert n["p"] == 60 and n["d"] > 0 and n["s"] >= 0
+    # Sorted left-to-right by start.
+    starts = [n["s"] for n in out["notes"]]
+    assert starts == sorted(starts)
 
 
 def test_history_remembers_per_line_instruments(db):
