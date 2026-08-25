@@ -54,8 +54,28 @@
   background: var(--bg);
 }
 
+.canvas {
+  position: relative;
+  cursor: pointer;
+}
+
 .svg {
   display: block;
+}
+
+/* Playhead: a thin vertical line swept imperatively during preview playback.
+   Lives inside .canvas (content space) so it scrolls with the roll. */
+.playhead {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 2px;
+  background: var(--accent);
+  box-shadow: 0 0 4px var(--accent);
+  opacity: 0;
+  pointer-events: none;
+  will-change: transform;
 }
 
 .grid,

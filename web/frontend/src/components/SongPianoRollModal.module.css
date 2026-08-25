@@ -66,6 +66,53 @@
   margin: 0.5rem 0;
 }
 
+/* Transport: play / pause / stop + time readout. */
+.transport {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin: 0.3rem 0 0.2rem;
+  flex-wrap: wrap;
+}
+
+.playBtn {
+  padding: 0.35rem 0.9rem;
+  border: 1px solid var(--accent-border);
+  border-radius: 6px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.stopBtn {
+  padding: 0.35rem 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text-h);
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.stopBtn:hover {
+  border-color: var(--accent-border);
+}
+
+.time {
+  font-variant-numeric: tabular-nums;
+  font-family: var(--mono);
+  font-size: 0.85rem;
+  color: var(--text-h);
+}
+
+.previewNote {
+  font-size: 0.72rem;
+  color: var(--text);
+  opacity: 0.8;
+}
+
 /* Instrument legend: identity is never colour-alone — every line is named here
    and any line can be isolated by clicking it. */
 .legend {
@@ -75,16 +122,21 @@
   margin: 0.6rem 0 0.8rem;
 }
 
+/* A legend pill is a container: its body solos the line, the speaker mutes it.
+   ("All lines" is a bare button reusing .legendItem.) */
 .legendItem {
   display: inline-flex;
   align-items: center;
-  gap: 0.4rem;
   font-size: 0.78rem;
   color: var(--text-h);
   background: var(--bg);
   border: 1px solid var(--border);
   border-radius: 999px;
-  padding: 3px 10px 3px 8px;
+  overflow: hidden;
+}
+
+button.legendItem {
+  padding: 3px 10px;
   cursor: pointer;
 }
 
@@ -95,6 +147,36 @@
 .legendActive {
   border-color: var(--accent);
   box-shadow: 0 0 0 1px var(--accent);
+}
+
+.legendMuted {
+  opacity: 0.5;
+}
+
+.legendMain {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  background: transparent;
+  border: none;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  padding: 3px 6px 3px 8px;
+}
+
+.muteBtn {
+  background: transparent;
+  border: none;
+  border-left: 1px solid var(--border);
+  cursor: pointer;
+  font-size: 0.72rem;
+  padding: 3px 7px;
+  line-height: 1;
+}
+
+.muteBtn:hover {
+  background: var(--accent-bg);
 }
 
 .swatch {
