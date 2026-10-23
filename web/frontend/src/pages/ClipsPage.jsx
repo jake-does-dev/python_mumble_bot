@@ -125,7 +125,6 @@ export default function ClipsPage() {
     setTagsExpanded(v => {
       const next = !v
       localStorage.setItem('pmb_tags_expanded', String(next))
-      if (!next) setActiveTag(null)
       return next
     })
   }
@@ -872,6 +871,15 @@ export default function ClipsPage() {
                   title={tagsExpanded ? 'Hide tags' : 'Show tags'}
                 >
                   {tagsExpanded ? '▾ Tags' : `▸ Tags (${tags.length})`}
+                </button>
+              )}
+              {!tagsExpanded && activeTag && (
+                <button
+                  className={`${styles.filterBtn} ${styles.active}`}
+                  onClick={() => setActiveTag(null)}
+                  title="Clear this tag"
+                >
+                  {activeTag} ✕
                 </button>
               )}
               {tagsExpanded && tags.map(tag => (
