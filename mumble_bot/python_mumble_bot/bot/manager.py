@@ -300,13 +300,17 @@ class PlaybackManager(EventManager):
         instrument. Returns (pcm_bytes, duration_seconds), or (None, 0.0) if
         there's nothing to play.
 
-        Each note triggers the clip pitch-shifted to that note's pitch (relative
+        Each note triggers a clip pitch-shifted to that note's pitch (relative
         to the song's median, so shifts stay small), laid onto a silent canvas at
         its onset and capped to its duration. Overlapping notes (chords) mix via
         audioop.add. `max_seconds` (0 = full) caps the output length.
+
+        `event.instruments` optionally maps a General MIDI program -> a different
+        clip (with its own gain) so each instrument "line" plays a distinct clip.
+        Lines with no entry use the default `event.clip_ref`. One shared median
+        root keeps the parts' relative pitch; only timbre/level differ per line.
         """
         song_path = "audio/music/{0}".format(event.song_file)
-        file = self.state_manager.find_audio_clip(event.clip_ref)
         try:
             notes, _duration = parse_midi(song_path)
         except Exception:
@@ -324,20 +328,48 @@ class PlaybackManager(EventManager):
         limit_bytes = int(max(0.0, event.max_seconds or 0.0) * sr) * bpf  # 0 = no limit
         max_shift = self.SONG_MAX_SEMITONE_SHIFT
 
+        # Resolve per-line instruments -> {program: (ref, file, gain_multiplier)}.
+        # The line's own gain stacks with its clip's stored gain; the default
+        # line gets event.gain. Gain is baked into the render (via _get_pcm's
+        # volume, part of its cache key), so finalize applies only the master
+        # volume.
+        def resolve(ref, extra_gain):
+            file = self.state_manager.find_audio_clip(ref)
+            gain_db = (self.state_manager.get_clip_gain_db(ref) or 0) + (
+                extra_gain or 0
+            )
+            return ref, file, transform.gain_db_to_multiplier(gain_db)
+
+        default_line = resolve(event.clip_ref, event.gain)
+        line_by_program = {}
+        for ins in event.instruments or []:
+            try:
+                line_by_program[int(ins["program"])] = resolve(
+                    ins["clip_ref"], ins.get("gain", 0)
+                )
+            except Exception:
+                continue
+
+        def line_for(note):
+            return line_by_program.get(note.program, default_line)
+
         def shift_for(note):
             return max(-max_shift, min(max_shift, note.pitch - root + transpose))
 
-        # Render each distinct pitch-shift once (reuses the PCM cache).
-        shift_pcm = {}
-        for n in notes:
-            if limit_bytes and int((n.start / speed) * sr) * bpf >= limit_bytes:
-                continue
-            shift = shift_for(n)
-            if shift not in shift_pcm:
+        # Render each distinct (clip, shift, gain) once (reuses the PCM cache).
+        render_cache = {}
+
+        def render(note):
+            ref, file, vol = line_for(note)
+            shift = shift_for(note)
+            key = (str(file), shift, round(vol, 4))
+            pcm = render_cache.get(key)
+            if pcm is None:
                 pcm, _hit = self._get_pcm(
-                    event.clip_ref, file, self.RESAMPLE_FILTER, 1.0, 1.0, shift
+                    ref, file, self.RESAMPLE_FILTER, vol, 1.0, shift
                 )
-                shift_pcm[shift] = pcm
+                render_cache[key] = pcm
+            return pcm
 
         min_note_bytes = int(self.SONG_MIN_NOTE_SECONDS * sr) * bpf
         placements = []
@@ -346,7 +378,7 @@ class PlaybackManager(EventManager):
             offset = int((n.start / speed) * sr) * bpf
             if limit_bytes and offset >= limit_bytes:
                 continue
-            pcm = shift_pcm.get(shift_for(n)) or b""
+            pcm = render(n) or b""
             if not pcm:
                 continue
             cap = max(min_note_bytes, int((n.duration / speed) * sr) * bpf)
@@ -361,7 +393,28 @@ class PlaybackManager(EventManager):
         if max_end == 0:
             return None, 0.0
 
-        canvas = bytearray(max_end)
+        canvas = self._mix_placements(placements, max_end)
+
+        # Per-line gain is baked into each render, so finalize applies only the
+        # master playback volume.
+        volume = self.state_manager.get_volume()
+        log.info(
+            "[song] %s on %s: %d notes, %d renders, %d extra lines, %.1fs",
+            event.song_file,
+            event.clip_ref,
+            len(notes),
+            len(render_cache),
+            len(line_by_program),
+            len(canvas) / (sr * bpf),
+        )
+        pcm = self._finalize_song_pcm(canvas, volume)
+        duration = len(pcm) / (sr * bpf)
+        return pcm, duration
+
+    def _mix_placements(self, placements, size):
+        """Sum note segments onto a silent mono canvas of `size` bytes (chords /
+        overlapping lines mix via saturating add). Returns the canvas bytes."""
+        canvas = bytearray(size)
         for i, (offset, seg) in enumerate(placements):
             region = bytes(canvas[offset : offset + len(seg)])
             if len(region) < len(seg):
@@ -374,24 +427,7 @@ class PlaybackManager(EventManager):
             # (5ms/tick) isn't starved during a long render → no stutter.
             if i % 8 == 7:
                 time.sleep(0.001)
-
-        gain_db = (self.state_manager.get_clip_gain_db(event.clip_ref) or 0) + (
-            event.gain or 0
-        )
-        volume = self.state_manager.get_volume() * transform.gain_db_to_multiplier(
-            gain_db
-        )
-        log.info(
-            "[song] %s on %s: %d notes, %d shifts, %.1fs",
-            event.song_file,
-            event.clip_ref,
-            len(notes),
-            len(shift_pcm),
-            len(canvas) / (sr * bpf),
-        )
-        pcm = self._finalize_song_pcm(bytes(canvas), volume)
-        duration = len(pcm) / (sr * bpf)
-        return pcm, duration
+        return bytes(canvas)
 
     def _finalize_song_pcm(self, pcm, volume):
         """Loudness-normalise the assembled mono canvas, apply the overall
@@ -1100,6 +1136,7 @@ class CommandManager(EventManager):
                     requested_by=command.get("requested_by"),
                     song_name=command.get("song_name"),
                     clip_name=command.get("clip_name"),
+                    instruments=command.get("instruments"),
                 )
             )
             return

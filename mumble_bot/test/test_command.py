@@ -97,6 +97,12 @@ def test_invalid_not_enough_args():
     assert isinstance(command, InvalidCommand)
 
 
+def test_ignore_plain_single_word():
+    incoming = Message("lol")
+    command = command_resolver.resolve(incoming)
+    assert command == IgnoreCommand()
+
+
 def test_invalid_unknown_command():
     incoming = Message("/pmb unknown_command")
     command = command_resolver.resolve(incoming)
@@ -158,14 +164,18 @@ def test_event_from_invalid_command():
     command = InvalidCommand()
     events = command.generate_events(None, None)
 
-    assert events == [UserTextEvent(None, None)]
+    assert events == [
+        UserTextEvent(
+            "Invalid command. Type '/pmb help' to see available commands.", None
+        )
+    ]
 
 
 def test_event_from_ignore_command():
     command = IgnoreCommand()
     events = command.generate_events(None, None)
 
-    assert events == [UserTextEvent(None, None)]
+    assert events == []
 
 
 def test_event_from_play_command_by_name():

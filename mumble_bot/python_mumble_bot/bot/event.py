@@ -64,6 +64,7 @@ class MidiSongEvent(Event):
         requested_by=None,
         song_name=None,
         clip_name=None,
+        instruments=None,
     ):
         super().__init__(clip_ref)
         self.clip_ref = clip_ref
@@ -73,6 +74,8 @@ class MidiSongEvent(Event):
         self.gain = gain  # dB, applied to the whole render
         self.max_seconds = max_seconds  # 0 = full song
         self.requested_by = requested_by
+        # Optional per-line instrument clips: [{program, clip_ref, gain}, ...].
+        self.instruments = instruments or []
         # Display names for the now-playing mini-player (fall back to file/ref).
         self.song_name = song_name or song_file
         self.clip_name = clip_name or clip_ref

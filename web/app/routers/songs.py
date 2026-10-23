@@ -57,6 +57,12 @@ def song_lines(song_id: str, current_user: str = Depends(get_current_user)):
     return SongsService().get_lines(song_id)
 
 
+@router.get("/{song_id}/notes")
+def song_notes(song_id: str, current_user: str = Depends(get_current_user)):
+    """Per-note data (with instrument lines) for the piano-roll visualiser."""
+    return SongsService().get_notes(song_id)
+
+
 @router.get("/now-playing")
 def now_playing(current_user: str = Depends(get_current_user)):
     """The currently-playing song (with start time + duration for a progress

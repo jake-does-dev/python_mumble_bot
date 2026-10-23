@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import MarqueeName from './MarqueeName'
+import SongPianoRollModal from './SongPianoRollModal'
 import styles from './SongCard.module.css'
 
 export default function SongCard({
@@ -8,6 +9,7 @@ export default function SongCard({
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [renaming, setRenaming] = useState(false)
   const [renameValue, setRenameValue] = useState(song.name)
+  const [rollOpen, setRollOpen] = useState(false)
   const canEdit = isAdmin || song.uploaded_by === username
 
   function commitRename() {
@@ -55,6 +57,11 @@ export default function SongCard({
         >
           {cooldownRemaining > 0 ? `▶ ${cooldownRemaining}s` : '▶ Play'}
         </button>
+        <button
+          className={styles.iconBtn}
+          onClick={() => setRollOpen(true)}
+          title="Piano roll — see which instrument plays which part"
+        >🎹</button>
         {canEdit && (
           <>
             <button
@@ -74,6 +81,10 @@ export default function SongCard({
           </>
         )}
       </div>
+
+      {rollOpen && (
+        <SongPianoRollModal song={song} onClose={() => setRollOpen(false)} />
+      )}
     </div>
   )
 }

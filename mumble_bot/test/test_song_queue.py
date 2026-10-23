@@ -61,6 +61,47 @@ def _event(song="gstq.mid", clip="dm0", **kw):
     return MidiSongEvent(clip_ref=clip, song_file=song, **kw)
 
 
+def test_render_uses_assigned_clip_per_instrument_line(monkeypatch):
+    """Notes render with their line's clip: the program with an override uses the
+    override clip, everything else uses the default clip."""
+    import python_mumble_bot.bot.manager as mgr_mod
+    from pmb_core.audio.midi import MidiNote
+
+    # Two notes: program 56 (overridden) and program 0 (default).
+    notes = [
+        MidiNote(60, 0.0, 0.5, 90, channel=0, program=0),
+        MidiNote(64, 0.0, 0.5, 90, channel=1, program=56),
+    ]
+    monkeypatch.setattr(mgr_mod, "parse_midi", lambda path: (notes, 0.5))
+
+    m = _mgr()
+    m._pcm_cache = {}
+    m.state_manager.find_audio_clip = lambda ref: "/audio/{0}.wav".format(ref)
+    m.state_manager.get_clip_gain_db = lambda ref: 0
+    m.state_manager.get_volume = lambda: 1.0
+    m._finalize_song_pcm = lambda pcm, vol: pcm
+
+    calls = []  # (ref, file) passed to _get_pcm
+
+    def fake_get_pcm(ref, file, pitch_filter, volume, speed, shift, reverse=False):
+        calls.append((ref, file))
+        return b"\x01\x02" * 2400, False  # 0.1s of mono 16-bit
+
+    m._get_pcm = fake_get_pcm
+
+    event = _event(
+        song="x.mid",
+        clip="meow",
+        instruments=[{"program": 56, "clip_ref": "honk", "gain": 0}],
+    )
+    pcm, dur = m._render_midi_song(event)
+
+    assert pcm and dur > 0
+    files = {ref: file for ref, file in calls}
+    assert files["honk"] == "/audio/honk.wav"  # program 56 used the override
+    assert files["meow"] == "/audio/meow.wav"  # program 0 fell back to default
+
+
 def test_event_display_names_default_to_file_and_ref():
     e = MidiSongEvent(clip_ref="dm0", song_file="gstq.mid")
     assert e.song_name == "gstq.mid" and e.clip_name == "dm0"

@@ -103,6 +103,70 @@ def _extract_lines(contents: bytes) -> list:
     return out
 
 
+# Cap on notes returned to the piano-roll visualiser. Typical songs are a few
+# thousand notes; this bounds the JSON payload / SVG node count for pathological
+# files. Busiest lines are kept first (see sort below) so a truncated roll still
+# shows the parts that matter.
+MAX_ROLL_NOTES = 6000
+
+
+def _extract_notes(contents: bytes) -> dict:
+    """Flatten a song into per-note data for the piano-roll visualiser.
+
+    Returns ``{"duration_s", "lines", "notes", "truncated"}`` where each note is
+    ``{"p": pitch, "s": start_s, "d": duration_s, "g": program}`` — short keys to
+    keep the payload small. Notes are grouped-by/coloured-by General MIDI program
+    (a "line"), matching :func:`_extract_lines`. Drums (channel 9) are skipped, as
+    the bots can't voice them as a pitched clip. No tempo maths of our own — mido
+    yields ``msg.time`` already in tempo-adjusted seconds."""
+    try:
+        mid = mido.MidiFile(file=io.BytesIO(contents))
+    except Exception:
+        raise HTTPException(400, "Not a valid MIDI file")
+
+    now = 0.0
+    programs = {}  # channel -> current GM program
+    # (channel, pitch) -> stack of (start, program) so repeated note-ons pair with
+    # note-offs in LIFO order.
+    open_notes = {}
+    notes = []
+    for msg in mid:
+        now += msg.time
+        if msg.type == "program_change":
+            programs[msg.channel] = msg.program
+            continue
+        if getattr(msg, "channel", 0) == DRUM_CHANNEL:
+            continue
+        if msg.type == "note_on" and msg.velocity > 0:
+            open_notes.setdefault((msg.channel, msg.note), []).append(
+                (now, programs.get(msg.channel, 0))
+            )
+        elif msg.type == "note_off" or (msg.type == "note_on" and msg.velocity == 0):
+            stack = open_notes.get((msg.channel, msg.note))
+            if stack:
+                start, program = stack.pop()
+                if now - start > 0:
+                    notes.append((msg.note, start, now - start, program))
+
+    duration = round(now, 2)
+    # Sort by start for a natural left-to-right roll; program-count drives which
+    # notes survive truncation via the line ordering below, not this sort.
+    notes.sort(key=lambda n: (n[1], n[0]))
+    truncated = len(notes) > MAX_ROLL_NOTES
+    if truncated:
+        notes = notes[:MAX_ROLL_NOTES]
+
+    return {
+        "duration_s": duration,
+        "lines": _extract_lines(contents),
+        "notes": [
+            {"p": p, "s": round(s, 3), "d": round(d, 3), "g": g}
+            for (p, s, d, g) in notes
+        ],
+        "truncated": truncated,
+    }
+
+
 class SongsService:
     def __init__(self):
         self.db = get_db()
@@ -137,6 +201,17 @@ class SongsService:
         if not path.exists():
             raise HTTPException(404, "Song file missing")
         return _extract_lines(path.read_bytes())
+
+    def get_notes(self, song_id: str) -> dict:
+        """Per-note data for the piano-roll visualiser, read from the stored .mid
+        on demand. Returns notes + instrument lines + duration in one parse."""
+        song = self.db.songs.find_one({"id": song_id}, {"_id": 0})
+        if not song:
+            raise HTTPException(404, f"Song '{song_id}' not found")
+        path = SONGS_DIR / song["filename"]
+        if not path.exists():
+            raise HTTPException(404, "Song file missing")
+        return _extract_notes(path.read_bytes())
 
     def upload_song(self, filename: str, contents: bytes, uploaded_by: str) -> dict:
         ext = Path(filename).suffix.lower()

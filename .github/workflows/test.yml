@@ -45,7 +45,7 @@ jobs:
           pipenv install --skip-lock --dev
           pipenv run pip install ../pmb_core
 
-      - run: pipenv run isort --recursive --diff .
+      - run: pipenv run isort --diff .
       - run: pipenv run black --check .
       - run: pipenv run flake8
       - run: pipenv run pytest
